@@ -44,19 +44,11 @@ from numpy.testing import (
     assert_allclose, IS_PYPY, HAS_REFCOUNT, assert_array_less, runstring,
     temppath, suppress_warnings, break_cycles,
     )
+from numpy.testing._private.utils import _no_tracing
 from numpy.core.tests._locales import CommaDecimalPointLocale
 
 # Need to test an object that does not fully implement math interface
 from datetime import timedelta, datetime
-
-
-if sys.version_info[:2] > (3, 2):
-    # In Python 3.3 the representation of empty shape, strides and sub-offsets
-    # is an empty tuple instead of None.
-    # https://docs.python.org/dev/whatsnew/3.3.html#api-changes
-    EMPTY = ()
-else:
-    EMPTY = None
 
 
 def _aligned_zeros(shape, dtype=float, order="C", align=None):
@@ -93,26 +85,6 @@ def _aligned_zeros(shape, dtype=float, order="C", align=None):
     data = np.ndarray(shape, dtype, buf, order=order)
     data.fill(0)
     return data
-
-def _no_tracing(func):
-    """
-    Decorator to temporarily turn off tracing for the duration of a test.
-    Needed in tests that check refcounting, otherwise the tracing itself
-    influences the refcounts
-    """
-    if not hasattr(sys, 'gettrace'):
-        return func
-    else:
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            original_trace = sys.gettrace()
-            try:
-                sys.settrace(None)
-                return func(*args, **kwargs)
-            finally:
-                sys.settrace(original_trace)
-        return wrapper
-
 
 
 class TestFlags:
@@ -2266,10 +2238,11 @@ class TestMethods:
         assert_equal([a.searchsorted(a[i], 'left') for i in ind], ind)
         assert_equal([a.searchsorted(a[i], 'right') for i in ind], ind + 1)
 
-    def test_searchsorted_with_sorter(self):
+    def test_searchsorted_with_invalid_sorter(self):
         a = np.array([5, 2, 1, 3, 4])
         s = np.argsort(a)
-        assert_raises(TypeError, np.searchsorted, a, 0, sorter=(1, (2, 3)))
+        assert_raises(TypeError, np.searchsorted, a, 0,
+                      sorter=np.array((1, (2, 3)), dtype=object))
         assert_raises(TypeError, np.searchsorted, a, 0, sorter=[1.1])
         assert_raises(ValueError, np.searchsorted, a, 0, sorter=[1, 2, 3, 4])
         assert_raises(ValueError, np.searchsorted, a, 0, sorter=[1, 2, 3, 4, 5, 6])
@@ -2279,6 +2252,7 @@ class TestMethods:
         assert_raises(ValueError, np.searchsorted, a, 0, sorter=[-1, 0, 1, 2, 3])
         assert_raises(ValueError, np.searchsorted, a, 0, sorter=[4, 0, -1, 2, 3])
 
+    def test_searchsorted_with_sorter(self):
         a = np.random.rand(300)
         s = a.argsort()
         b = np.sort(a)
@@ -5288,51 +5262,41 @@ class TestRecord:
         a = np.zeros((1,), dtype=[('f1', 'i4'),
                                   ('f2', 'i4'),
                                   ('f3', [('sf1', 'i4')])])
-        is_py3 = sys.version_info[0] >= 3
-        if is_py3:
-            funcs = (str,)
-            # byte string indexing fails gracefully
-            assert_raises(IndexError, a.__setitem__, b'f1', 1)
-            assert_raises(IndexError, a.__getitem__, b'f1')
-            assert_raises(IndexError, a['f1'].__setitem__, b'sf1', 1)
-            assert_raises(IndexError, a['f1'].__getitem__, b'sf1')
-        else:
-            funcs = (str, unicode)
-        for func in funcs:
-            b = a.copy()
-            fn1 = func('f1')
-            b[fn1] = 1
-            assert_equal(b[fn1], 1)
-            fnn = func('not at all')
-            assert_raises(ValueError, b.__setitem__, fnn, 1)
-            assert_raises(ValueError, b.__getitem__, fnn)
-            b[0][fn1] = 2
-            assert_equal(b[fn1], 2)
-            # Subfield
-            assert_raises(ValueError, b[0].__setitem__, fnn, 1)
-            assert_raises(ValueError, b[0].__getitem__, fnn)
-            # Subfield
-            fn3 = func('f3')
-            sfn1 = func('sf1')
-            b[fn3][sfn1] = 1
-            assert_equal(b[fn3][sfn1], 1)
-            assert_raises(ValueError, b[fn3].__setitem__, fnn, 1)
-            assert_raises(ValueError, b[fn3].__getitem__, fnn)
-            # multiple subfields
-            fn2 = func('f2')
-            b[fn2] = 3
+        # byte string indexing fails gracefully
+        assert_raises(IndexError, a.__setitem__, b'f1', 1)
+        assert_raises(IndexError, a.__getitem__, b'f1')
+        assert_raises(IndexError, a['f1'].__setitem__, b'sf1', 1)
+        assert_raises(IndexError, a['f1'].__getitem__, b'sf1')
+        b = a.copy()
+        fn1 = str('f1')
+        b[fn1] = 1
+        assert_equal(b[fn1], 1)
+        fnn = str('not at all')
+        assert_raises(ValueError, b.__setitem__, fnn, 1)
+        assert_raises(ValueError, b.__getitem__, fnn)
+        b[0][fn1] = 2
+        assert_equal(b[fn1], 2)
+        # Subfield
+        assert_raises(ValueError, b[0].__setitem__, fnn, 1)
+        assert_raises(ValueError, b[0].__getitem__, fnn)
+        # Subfield
+        fn3 = str('f3')
+        sfn1 = str('sf1')
+        b[fn3][sfn1] = 1
+        assert_equal(b[fn3][sfn1], 1)
+        assert_raises(ValueError, b[fn3].__setitem__, fnn, 1)
+        assert_raises(ValueError, b[fn3].__getitem__, fnn)
+        # multiple subfields
+        fn2 = str('f2')
+        b[fn2] = 3
 
-            assert_equal(b[['f1', 'f2']][0].tolist(), (2, 3))
-            assert_equal(b[['f2', 'f1']][0].tolist(), (3, 2))
-            assert_equal(b[['f1', 'f3']][0].tolist(), (2, (1,)))
+        assert_equal(b[['f1', 'f2']][0].tolist(), (2, 3))
+        assert_equal(b[['f2', 'f1']][0].tolist(), (3, 2))
+        assert_equal(b[['f1', 'f3']][0].tolist(), (2, (1,)))
 
         # non-ascii unicode field indexing is well behaved
-        if not is_py3:
-            pytest.skip('non ascii unicode field indexing skipped; '
-                        'raises segfault on python 2.x')
-        else:
-            assert_raises(ValueError, a.__setitem__, u'\u03e0', 1)
-            assert_raises(ValueError, a.__getitem__, u'\u03e0')
+        assert_raises(ValueError, a.__setitem__, u'\u03e0', 1)
+        assert_raises(ValueError, a.__getitem__, u'\u03e0')
 
     def test_record_hash(self):
         a = np.array([(1, 2), (1, 2)], dtype='i1,i2')
@@ -7056,7 +7020,7 @@ class TestNewBufferProtocol:
         assert_equal(y.shape, (5,))
         assert_equal(y.ndim, 1)
         assert_equal(y.strides, (4,))
-        assert_equal(y.suboffsets, EMPTY)
+        assert_equal(y.suboffsets, ())
         assert_equal(y.itemsize, 4)
 
     def test_export_simple_nd(self):
@@ -7066,7 +7030,7 @@ class TestNewBufferProtocol:
         assert_equal(y.shape, (2, 2))
         assert_equal(y.ndim, 2)
         assert_equal(y.strides, (16, 8))
-        assert_equal(y.suboffsets, EMPTY)
+        assert_equal(y.suboffsets, ())
         assert_equal(y.itemsize, 8)
 
     def test_export_discontiguous(self):
@@ -7076,7 +7040,7 @@ class TestNewBufferProtocol:
         assert_equal(y.shape, (3, 3))
         assert_equal(y.ndim, 2)
         assert_equal(y.strides, (36, 4))
-        assert_equal(y.suboffsets, EMPTY)
+        assert_equal(y.suboffsets, ())
         assert_equal(y.itemsize, 4)
 
     def test_export_record(self):
@@ -7109,7 +7073,7 @@ class TestNewBufferProtocol:
         y = memoryview(x)
         assert_equal(y.shape, (1,))
         assert_equal(y.ndim, 1)
-        assert_equal(y.suboffsets, EMPTY)
+        assert_equal(y.suboffsets, ())
 
         sz = sum([np.dtype(b).itemsize for a, b in dt])
         if np.dtype('l').itemsize == 4:
@@ -7125,10 +7089,10 @@ class TestNewBufferProtocol:
         x = np.array(([[1, 2], [3, 4]],), dtype=[('a', ('i', (2, 2)))])
         y = memoryview(x)
         assert_equal(y.format, 'T{(2,2)i:a:}')
-        assert_equal(y.shape, EMPTY)
+        assert_equal(y.shape, ())
         assert_equal(y.ndim, 0)
-        assert_equal(y.strides, EMPTY)
-        assert_equal(y.suboffsets, EMPTY)
+        assert_equal(y.strides, ())
+        assert_equal(y.suboffsets, ())
         assert_equal(y.itemsize, 16)
 
     def test_export_endian(self):
@@ -7556,7 +7520,6 @@ class TestConversion:
         class NotConvertible:
             def __bool__(self):
                 raise NotImplementedError
-            __nonzero__ = __bool__  # python 2
 
         assert_raises(NotImplementedError, bool, np.array(NotConvertible()))
         assert_raises(NotImplementedError, bool, np.array([NotConvertible()]))
