@@ -1848,32 +1848,14 @@ class TestSpecialMethods:
         a = A()
         assert_raises(RuntimeError, ncu.maximum, a, a)
 
-    def test_array_with_context(self):
+    def test_array_too_many_args(self):
 
-        class A:
-            def __array__(self, dtype=None, context=None):
-                func, args, i = context
-                self.func = func
-                self.args = args
-                self.i = i
-                return np.zeros(1)
-
-        class B:
-            def __array__(self, dtype=None):
-                return np.zeros(1, dtype)
-
-        class C:
-            def __array__(self):
+        class A(object):
+            def __array__(self, dtype, context):
                 return np.zeros(1)
 
         a = A()
-        ncu.maximum(np.zeros(1), a)
-        assert_(a.func is ncu.maximum)
-        assert_equal(a.args[0], 0)
-        assert_(a.args[1] is a)
-        assert_(a.i == 1)
-        assert_equal(ncu.maximum(a, B()), 0)
-        assert_equal(ncu.maximum(a, C()), 0)
+        assert_raises_regex(TypeError, '2 required positional', np.sum, a)
 
     def test_ufunc_override(self):
         # check override works even with instance with high priority.
@@ -2879,6 +2861,32 @@ class TestSubclass:
 
         a = simple((3, 4))
         assert_equal(a+a, a)
+
+
+class TestFrompyfunc(object):
+
+    def test_identity(self):
+        def mul(a, b):
+            return a * b
+
+        # with identity=value
+        mul_ufunc = np.frompyfunc(mul, nin=2, nout=1, identity=1)
+        assert_equal(mul_ufunc.reduce([2, 3, 4]), 24)
+        assert_equal(mul_ufunc.reduce(np.ones((2, 2)), axis=(0, 1)), 1)
+        assert_equal(mul_ufunc.reduce([]), 1)
+
+        # with identity=None (reorderable)
+        mul_ufunc = np.frompyfunc(mul, nin=2, nout=1, identity=None)
+        assert_equal(mul_ufunc.reduce([2, 3, 4]), 24)
+        assert_equal(mul_ufunc.reduce(np.ones((2, 2)), axis=(0, 1)), 1)
+        assert_raises(ValueError, lambda: mul_ufunc.reduce([]))
+
+        # with no identity (not reorderable)
+        mul_ufunc = np.frompyfunc(mul, nin=2, nout=1)
+        assert_equal(mul_ufunc.reduce([2, 3, 4]), 24)
+        assert_raises(ValueError, lambda: mul_ufunc.reduce(np.ones((2, 2)), axis=(0, 1)))
+        assert_raises(ValueError, lambda: mul_ufunc.reduce([]))
+
 
 def _check_branch_cut(f, x0, dx, re_sign=1, im_sign=-1, sig_zero_ok=False,
                       dtype=complex):
