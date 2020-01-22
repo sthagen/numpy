@@ -36,11 +36,10 @@ class TestRegression:
         # Ticket #16
         a = np.transpose(np.array([[2, 9], [7, 0], [3, 8]]))
         for proto in range(2, pickle.HIGHEST_PROTOCOL + 1):
-            f = BytesIO()
-            pickle.dump(a, f, protocol=proto)
-            f.seek(0)
-            b = pickle.load(f)
-            f.close()
+            with BytesIO() as f:
+                pickle.dump(a, f, protocol=proto)
+                f.seek(0)
+                b = pickle.load(f)
             assert_array_equal(a, b)
 
     def test_typeNA(self):
@@ -94,11 +93,10 @@ class TestRegression:
         # Ticket #50
         ca = np.char.array(np.arange(1000, 1010), itemsize=4)
         for proto in range(2, pickle.HIGHEST_PROTOCOL + 1):
-            f = BytesIO()
-            pickle.dump(ca, f, protocol=proto)
-            f.seek(0)
-            ca = np.load(f, allow_pickle=True)
-            f.close()
+            with BytesIO() as f:
+                pickle.dump(ca, f, protocol=proto)
+                f.seek(0)
+                ca = np.load(f, allow_pickle=True)
 
     def test_noncontiguous_fill(self):
         # Ticket #58.
@@ -358,11 +356,10 @@ class TestRegression:
         # Implemented in r2840
         dt = np.dtype([('x', int), ('y', np.object_), ('z', 'O')])
         for proto in range(2, pickle.HIGHEST_PROTOCOL + 1):
-            f = BytesIO()
-            pickle.dump(dt, f, protocol=proto)
-            f.seek(0)
-            dt_ = pickle.load(f)
-            f.close()
+            with BytesIO() as f:
+                pickle.dump(dt, f, protocol=proto)
+                f.seek(0)
+                dt_ = pickle.load(f)
             assert_equal(dt, dt_)
 
     def test_mem_array_creation_invalid_specification(self):
@@ -1354,13 +1351,13 @@ class TestRegression:
     def test_array_from_sequence_scalar_array(self):
         # Ticket #1078: segfaults when creating an array with a sequence of
         # 0d arrays.
-        a = np.array((np.ones(2), np.array(2)))
+        a = np.array((np.ones(2), np.array(2)), dtype=object)
         assert_equal(a.shape, (2,))
         assert_equal(a.dtype, np.dtype(object))
         assert_equal(a[0], np.ones(2))
         assert_equal(a[1], np.array(2))
 
-        a = np.array(((1,), np.array(1)))
+        a = np.array(((1,), np.array(1)), dtype=object)
         assert_equal(a.shape, (2,))
         assert_equal(a.dtype, np.dtype(object))
         assert_equal(a[0], (1,))
@@ -1368,7 +1365,7 @@ class TestRegression:
 
     def test_array_from_sequence_scalar_array2(self):
         # Ticket #1081: weird array with strange input...
-        t = np.array([np.array([]), np.array(0, object)])
+        t = np.array([np.array([]), np.array(0, object)], dtype=object)
         assert_equal(t.shape, (2,))
         assert_equal(t.dtype, np.dtype(object))
 
@@ -2256,9 +2253,10 @@ class TestRegression:
             x[0], x[-1] = x[-1], x[0]
 
         uf = np.frompyfunc(f, 1, 0)
-        a = np.array([[1, 2, 3], [4, 5], [6, 7, 8, 9]])
+        a = np.array([[1, 2, 3], [4, 5], [6, 7, 8, 9]], dtype=object)
         assert_equal(uf(a), ())
-        assert_array_equal(a, [[3, 2, 1], [5, 4], [9, 7, 8, 6]])
+        expected = np.array([[3, 2, 1], [5, 4], [9, 7, 8, 6]], dtype=object)
+        assert_array_equal(a, expected)
 
     @pytest.mark.skipif(not HAS_REFCOUNT, reason="Python lacks refcounts")
     def test_leak_in_structured_dtype_comparison(self):
