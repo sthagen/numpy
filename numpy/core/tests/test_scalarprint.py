@@ -8,7 +8,7 @@ import pytest
 
 from tempfile import TemporaryFile
 import numpy as np
-from numpy.testing import assert_, assert_equal, suppress_warnings
+from numpy.testing import assert_, assert_equal
 
 class TestRealScalars:
     def test_str(self):
@@ -82,10 +82,7 @@ class TestRealScalars:
             orig_stdout, orig_stderr = sys.stdout, sys.stderr
             sys.stdout, sys.stderr = fo, fe
 
-            # py2 code.interact sends irrelevant internal DeprecationWarnings
-            with suppress_warnings() as sup:
-                sup.filter(DeprecationWarning)
-                code.interact(local={'np': np}, readfunc=input_func, banner='')
+            code.interact(local={'np': np}, readfunc=input_func, banner='')
 
             sys.stdout, sys.stderr = orig_stdout, orig_stderr
 

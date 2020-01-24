@@ -32,7 +32,6 @@ def clean_up_temporary_directory():
 
 atexit.register(clean_up_temporary_directory)
 
-from numpy.compat import basestring
 from numpy.compat import npy_load_module
 
 __all__ = ['Configuration', 'get_numpy_include_dirs', 'default_config_dict',
@@ -450,7 +449,7 @@ def _get_f90_modules(source):
     return modules
 
 def is_string(s):
-    return isinstance(s, basestring)
+    return isinstance(s, str)
 
 def all_strings(lst):
     """Return True if all items in lst are string objects. """
@@ -923,18 +922,8 @@ class Configuration:
             else:
                 pn = dot_join(*([parent_name] + subpackage_name.split('.')[:-1]))
                 args = (pn,)
-                def fix_args_py2(args):
-                    if setup_module.configuration.__code__.co_argcount > 1:
-                        args = args + (self.top_path,)
-                    return args
-                def fix_args_py3(args):
-                    if setup_module.configuration.__code__.co_argcount > 1:
-                        args = args + (self.top_path,)
-                    return args
-                if sys.version_info[0] < 3:
-                    args = fix_args_py2(args)
-                else:
-                    args = fix_args_py3(args)
+                if setup_module.configuration.__code__.co_argcount > 1:
+                    args = args + (self.top_path,)
                 config = setup_module.configuration(*args)
             if config.name!=dot_join(parent_name, subpackage_name):
                 self.warn('Subpackage %r configuration returned as %r' % \
