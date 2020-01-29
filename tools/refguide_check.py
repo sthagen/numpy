@@ -656,7 +656,6 @@ class Checker(doctest.OutputChecker):
     Check the docstrings
     """
     obj_pattern = re.compile('at 0x[0-9a-fA-F]+>')
-    int_pattern = re.compile('^[0-9]+L?$')
     vanilla = doctest.OutputChecker()
     rndm_markers = {'# random', '# Random', '#random', '#Random', "# may vary",
                     "# uninitialized", "#uninitialized"}
@@ -694,11 +693,6 @@ class Checker(doctest.OutputChecker):
         # ignore comments (e.g. signal.freqresp)
         if want.lstrip().startswith("#"):
             return True
-
-        # python 2 long integers are equal to python 3 integers
-        if self.int_pattern.match(want) and self.int_pattern.match(got):
-            if want.rstrip("L\r\n") == got.rstrip("L\r\n"):
-                return True
 
         # try the standard doctest
         try:
@@ -947,6 +941,14 @@ def check_doctests_testfile(fname, verbose, ns=None,
     Notes
     -----
 
+    refguide can be signalled to skip testing code by adding
+    ``#doctest: +SKIP`` to the end of the line. If the output varies or is
+    random, add ``# may vary`` or ``# random`` to the comment. for example
+
+    >>> plt.plot(...)  # doctest: +SKIP
+    >>> random.randint(0,10)
+    5 # random
+
     We also try to weed out pseudocode:
     * We maintain a list of exceptions which signal pseudocode,
     * We split the text file into "blocks" of code separated by empty lines
@@ -1191,8 +1193,6 @@ def main(argv):
             if dots:
                 sys.stderr.write('\n')
                 sys.stderr.flush()
-
-            all_dict, deprecated, others = get_all_dict(module)
 
     if args.rst:
         base_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..')
