@@ -2699,8 +2699,6 @@ class MaskedIterator:
                 return masked
         return d
 
-    next = __next__
-
 
 class MaskedArray(ndarray):
     """
@@ -4327,17 +4325,6 @@ class MaskedArray(ndarray):
             raise MaskError('Cannot convert masked element to a Python int.')
         return int(self.item())
 
-    def __long__(self):
-        """
-        Convert to long.
-        """
-        if self.size > 1:
-            raise TypeError("Only length-1 arrays can be converted "
-                            "to Python scalars")
-        elif self._mask:
-            raise MaskError('Cannot convert masked element to a Python long.')
-        return long(self.item())
-
     @property
     def imag(self):
         """
@@ -5954,10 +5941,17 @@ class MaskedArray(ndarray):
         return result.tolist()
 
     def tostring(self, fill_value=None, order='C'):
+        r"""
+        A compatibility alias for `tobytes`, with exactly the same behavior.
+
+        Despite its name, it returns `bytes` not `str`\ s.
+
+        .. deprecated:: 1.19.0
         """
-        This function is a compatibility alias for tobytes. Despite its name it
-        returns bytes not strings.
-        """
+        # 2020-03-30, Numpy 1.19.0
+        warnings.warn(
+            "tostring() is deprecated. Use tobytes() instead.",
+            DeprecationWarning, stacklevel=2)
 
         return self.tobytes(fill_value, order=order)
 
@@ -6384,6 +6378,21 @@ class MaskedConstant(MaskedArray):
         else:
             # it's a subclass, or something is wrong, make it obvious
             return object.__repr__(self)
+
+    def __format__(self, format_spec):
+        # Replace ndarray.__format__ with the default, which supports no format characters.
+        # Supporting format characters is unwise here, because we do not know what type
+        # the user was expecting - better to not guess.
+        try:
+            return object.__format__(self, format_spec)
+        except TypeError:
+            # 2020-03-23, NumPy 1.19.0
+            warnings.warn(
+                "Format strings passed to MaskedConstant are ignored, but in future may "
+                "error or produce different behavior",
+                FutureWarning, stacklevel=2
+            )
+            return object.__format__(self, "")
 
     def __reduce__(self):
         """Override of MaskedArray's __reduce__.
