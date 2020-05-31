@@ -1374,10 +1374,17 @@ def resize(a, new_shape):
 
     See Also
     --------
+    np.reshape : Reshape an array without changing the total size.
+    np.pad : Enlarge and pad an array.
+    np.repeat: Repeat elements of an array.
     ndarray.resize : resize an array in-place.
 
     Notes
     -----
+    When the total size of the array does not change `~numpy.reshape` should
+    be used.  In most other cases either indexing (to reduce the size)
+    or padding (to increase the size) may be a more appropriate solution.
+
     Warning: This functionality does **not** consider axes separately,
     i.e. it does not apply interpolation/extrapolation.
     It fills the return array with the required number of elements, taken
@@ -1401,22 +1408,21 @@ def resize(a, new_shape):
     """
     if isinstance(new_shape, (int, nt.integer)):
         new_shape = (new_shape,)
+
     a = ravel(a)
-    Na = len(a)
-    total_size = um.multiply.reduce(new_shape)
-    if Na == 0 or total_size == 0:
-        return mu.zeros(new_shape, a.dtype)
 
-    n_copies = int(total_size / Na)
-    extra = total_size % Na
+    new_size = 1
+    for dim_length in new_shape:
+        new_size *= dim_length
+        if dim_length < 0:
+            raise ValueError('all elements of `new_shape` must be non-negative')
 
-    if extra != 0:
-        n_copies = n_copies + 1
-        extra = Na - extra
+    if a.size == 0 or new_size == 0:
+        # First case must zero fill. The second would have repeats == 0.
+        return np.zeros_like(a, shape=new_shape)
 
-    a = concatenate((a,) * n_copies)
-    if extra > 0:
-        a = a[:-extra]
+    repeats = -(-new_size // a.size)  # ceil division
+    a = concatenate((a,) * repeats)[:new_size]
 
     return reshape(a, new_shape)
 
@@ -2494,6 +2500,14 @@ def ptp(a, axis=None, out=None, keepdims=np._NoValue):
 
     The name of the function comes from the acronym for 'peak to peak'.
 
+    .. warning::
+        `ptp` preserves the data type of the array. This means the
+        return value for an input of signed integers with n bits
+        (e.g. `np.int8`, `np.int16`, etc) is also a signed integer
+        with n bits.  In that case, peak-to-peak values greater than
+        ``2**(n-1)-1`` will be returned as negative values. An example
+        with a work-around is shown below.
+
     Parameters
     ----------
     a : array_like
@@ -2531,16 +2545,33 @@ def ptp(a, axis=None, out=None, keepdims=np._NoValue):
 
     Examples
     --------
-    >>> x = np.arange(4).reshape((2,2))
-    >>> x
-    array([[0, 1],
-           [2, 3]])
-
-    >>> np.ptp(x, axis=0)
-    array([2, 2])
+    >>> x = np.array([[4, 9, 2, 10],
+    ...               [6, 9, 7, 12]])
 
     >>> np.ptp(x, axis=1)
-    array([1, 1])
+    array([8, 6])
+
+    >>> np.ptp(x, axis=0)
+    array([2, 0, 5, 2])
+
+    >>> np.ptp(x)
+    10
+
+    This example shows that a negative value can be returned when
+    the input is an array of signed integers.
+
+    >>> y = np.array([[1, 127],
+    ...               [0, 127],
+    ...               [-1, 127],
+    ...               [-2, 127]], dtype=np.int8)
+    >>> np.ptp(y, axis=1)
+    array([ 126,  127, -128, -127], dtype=int8)
+
+    A work-around is to use the `view()` method to view the result as
+    unsigned integers with the same bit width:
+
+    >>> np.ptp(y, axis=1).view(np.uint8)
+    array([126, 127, 128, 129], dtype=uint8)
 
     """
     kwargs = {}
@@ -3411,17 +3442,18 @@ def std(a, axis=None, dtype=None, out=None, ddof=0, keepdims=np._NoValue):
     Notes
     -----
     The standard deviation is the square root of the average of the squared
-    deviations from the mean, i.e., ``std = sqrt(mean(abs(x - x.mean())**2))``.
+    deviations from the mean, i.e., ``std = sqrt(mean(x))``, where 
+    ``x = abs(a - a.mean())**2``.
 
-    The average squared deviation is normally calculated as
-    ``x.sum() / N``, where ``N = len(x)``.  If, however, `ddof` is specified,
-    the divisor ``N - ddof`` is used instead. In standard statistical
-    practice, ``ddof=1`` provides an unbiased estimator of the variance
-    of the infinite population. ``ddof=0`` provides a maximum likelihood
-    estimate of the variance for normally distributed variables. The
-    standard deviation computed in this function is the square root of
-    the estimated variance, so even with ``ddof=1``, it will not be an
-    unbiased estimate of the standard deviation per se.
+    The average squared deviation is typically calculated as ``x.sum() / N``,
+    where ``N = len(x)``. If, however, `ddof` is specified, the divisor
+    ``N - ddof`` is used instead. In standard statistical practice, ``ddof=1``
+    provides an unbiased estimator of the variance of the infinite population.
+    ``ddof=0`` provides a maximum likelihood estimate of the variance for
+    normally distributed variables. The standard deviation computed in this
+    function is the square root of the estimated variance, so even with
+    ``ddof=1``, it will not be an unbiased estimate of the standard deviation
+    per se.
 
     Note that, for complex numbers, `std` takes the absolute
     value before squaring, so that the result is always real and nonnegative.
@@ -3536,9 +3568,9 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=np._NoValue):
     Notes
     -----
     The variance is the average of the squared deviations from the mean,
-    i.e.,  ``var = mean(abs(x - x.mean())**2)``.
+    i.e.,  ``var = mean(x)``, where ``x = abs(a - a.mean())**2``.
 
-    The mean is normally calculated as ``x.sum() / N``, where ``N = len(x)``.
+    The mean is typically calculated as ``x.sum() / N``, where ``N = len(x)``.
     If, however, `ddof` is specified, the divisor ``N - ddof`` is used
     instead.  In standard statistical practice, ``ddof=1`` provides an
     unbiased estimator of the variance of a hypothetical infinite population.

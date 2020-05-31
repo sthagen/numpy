@@ -516,7 +516,7 @@ cdef class Generator:
     @cython.wraparound(True)
     def choice(self, a, size=None, replace=True, p=None, axis=0, bint shuffle=True):
         """
-        choice(a, size=None, replace=True, p=None, axis=0, shuffle=True):
+        choice(a, size=None, replace=True, p=None, axis=0, shuffle=True)
 
         Generates a random sample from a given 1-D array
 
@@ -3502,14 +3502,14 @@ cdef class Generator:
         # GH10839, ensure double to make tol meaningful
         cov = cov.astype(np.double)
         if method == 'svd':
-            from numpy.dual import svd
+            from numpy.linalg import svd
             (u, s, vh) = svd(cov)
         elif method == 'eigh':
-            from numpy.dual import eigh
+            from numpy.linalg import eigh
             # could call linalg.svd(hermitian=True), but that calculates a vh we don't need
             (s, u)  = eigh(cov)
         else:
-            from numpy.dual import cholesky
+            from numpy.linalg import cholesky
             l = cholesky(cov)
 
         # make sure check_valid is ignored whe method == 'cholesky'

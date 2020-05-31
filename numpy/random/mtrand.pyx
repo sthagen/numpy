@@ -807,7 +807,7 @@ cdef class RandomState:
 
         Generates a random sample from a given 1-D array
 
-                .. versionadded:: 1.7.0
+        .. versionadded:: 1.7.0
 
         .. note::
             New code should use the ``choice`` method of a ``default_rng()``
@@ -4049,7 +4049,7 @@ cdef class RandomState:
         [True, True] # random
 
         """
-        from numpy.dual import svd
+        from numpy.linalg import svd
 
         # Check preconditions on arguments
         mean = np.array(mean)

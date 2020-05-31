@@ -54,7 +54,7 @@ Operating System :: MacOS
 """
 
 MAJOR               = 1
-MINOR               = 19
+MINOR               = 20
 MICRO               = 0
 ISRELEASED          = False
 VERSION             = '%d.%d.%d' % (MAJOR, MINOR, MICRO)
@@ -179,7 +179,7 @@ def check_submodules():
             if 'path' in l:
                 p = l.split('=')[-1].strip()
                 if not os.path.exists(p):
-                    raise ValueError(f'Submodule {p} missing')
+                    raise ValueError('Submodule {} missing'.format(p))
 
 
     proc = subprocess.Popen(['git', 'submodule', 'status'],
@@ -188,7 +188,7 @@ def check_submodules():
     status = status.decode("ascii", "replace")
     for line in status.splitlines():
         if line.startswith('-') or line.startswith('+'):
-            raise ValueError(f'Submodule not clean: {line}')
+            raise ValueError('Submodule not clean: {}'.format(line))
             
 
 
@@ -443,9 +443,9 @@ def setup_package():
         license = 'BSD',
         classifiers=[_f for _f in CLASSIFIERS.split('\n') if _f],
         platforms = ["Windows", "Linux", "Solaris", "Mac OS-X", "Unix"],
-        test_suite='nose.collector',
+        test_suite='pytest',
         cmdclass=cmdclass,
-        python_requires='>=3.5',
+        python_requires='>=3.6',
         zip_safe=False,
         entry_points={
             'console_scripts': f2py_cmds

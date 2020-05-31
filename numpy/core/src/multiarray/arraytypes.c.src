@@ -20,6 +20,7 @@
 #include "npy_sort.h"
 #include "common.h"
 #include "ctors.h"
+#include "dtypemeta.h"
 #include "lowlevel_strided_loops.h"
 #include "usertypes.h"
 #include "_datetime.h"
@@ -1489,6 +1490,7 @@ OBJECT_to_@TOTYPE@(void *input, void *output, npy_intp n,
  *
  * #from = STRING*23, UNICODE*23, VOID*23#
  * #fromtyp = npy_char*69#
+ * #is_string_to_bool = 1, 0*22, 1, 0*22, 0*23#
  * #to = (BOOL,
  *           BYTE, UBYTE, SHORT, USHORT, INT, UINT,
  *           LONG, ULONG, LONGLONG, ULONGLONG,
@@ -1525,6 +1527,13 @@ static void
         if (temp == NULL) {
             return;
         }
+#if @is_string_to_bool@
+        /* Legacy behaviour converts strings to integers before going to bool */
+        Py_SETREF(temp, PyNumber_Long(temp));
+        if (temp == NULL) {
+            return;
+        }
+#endif
         if (@to@_setitem(temp, op, aop)) {
             Py_DECREF(temp);
             return;
@@ -3838,7 +3847,7 @@ static void
  */
 
 /*
- * Compute correlation of data with with small kernels
+ * Compute correlation of data with small kernels
  * Calling a BLAS dot product for the inner loop of the correlation is overkill
  * for small kernels. It is faster to compute it directly.
  * Intended to be used by _pyarray_correlate so no input verifications is done
@@ -4357,6 +4366,17 @@ set_typeinfo(PyObject *dict)
 
     PyArray_Descr *dtype;
     PyObject *cobj, *key;
+
+    /*
+     * Override the base class for all types, eventually all of this logic
+     * should be defined on the class and inherited to the scalar.
+     * (NPY_HALF is the largest builtin one.)
+     */
+    for (i = 0; i <= NPY_HALF; i++) {
+        if (dtypemeta_wrap_legacy_descriptor(_builtin_descrs[i]) < 0) {
+            return -1;
+        }
+    }
 
     /*
      * Add cast functions for the new types

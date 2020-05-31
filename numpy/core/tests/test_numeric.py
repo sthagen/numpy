@@ -31,6 +31,17 @@ class TestResize:
         Ar3 = np.array([[1, 2, 3], [4, 1, 2], [3, 4, 1], [2, 3, 4]])
         assert_equal(np.resize(A, (4, 3)), Ar3)
 
+    def test_repeats(self):
+        A = np.array([1, 2, 3])
+        Ar1 = np.array([[1, 2, 3, 1], [2, 3, 1, 2]])
+        assert_equal(np.resize(A, (2, 4)), Ar1)
+
+        Ar2 = np.array([[1, 2], [3, 1], [2, 3], [1, 2]])
+        assert_equal(np.resize(A, (4, 2)), Ar2)
+
+        Ar3 = np.array([[1, 2, 3], [1, 2, 3], [1, 2, 3], [1, 2, 3]])
+        assert_equal(np.resize(A, (4, 3)), Ar3)
+
     def test_zeroresize(self):
         A = np.array([[1, 2], [3, 4]])
         Ar = np.resize(A, (0,))
@@ -49,6 +60,23 @@ class TestResize:
         Ar = np.resize(A, (2, 1))
         assert_array_equal(Ar, np.zeros((2, 1), Ar.dtype))
         assert_equal(A.dtype, Ar.dtype)
+
+    def test_negative_resize(self):
+        A = np.arange(0, 10, dtype=np.float32)
+        new_shape = (-10, -1)
+        with pytest.raises(ValueError, match=r"negative"):
+            np.resize(A, new_shape=new_shape)
+
+    def test_subclass(self):
+        class MyArray(np.ndarray):
+            __array_priority__ = 1.
+
+        my_arr = np.array([1]).view(MyArray)
+        assert type(np.resize(my_arr, 5)) is MyArray
+        assert type(np.resize(my_arr, 0)) is MyArray
+
+        my_arr = np.array([]).view(MyArray)
+        assert type(np.resize(my_arr, 5)) is MyArray
 
 
 class TestNonarrayArgs:
@@ -1445,6 +1473,36 @@ class TestArrayComparisons:
                              np.array([('a', 1)], dtype='S1,u4'))
         assert_(res)
         assert_(type(res) is bool)
+
+    def test_array_equal_equal_nan(self):
+        # Test array_equal with equal_nan kwarg
+        a1 = np.array([1, 2, np.nan])
+        a2 = np.array([1, np.nan, 2])
+        a3 = np.array([1, 2, np.inf])
+
+        # equal_nan=False by default
+        assert_(not np.array_equal(a1, a1))
+        assert_(np.array_equal(a1, a1, equal_nan=True))
+        assert_(not np.array_equal(a1, a2, equal_nan=True))
+        # nan's not conflated with inf's
+        assert_(not np.array_equal(a1, a3, equal_nan=True))
+        # 0-D arrays
+        a = np.array(np.nan)
+        assert_(not np.array_equal(a, a))
+        assert_(np.array_equal(a, a, equal_nan=True))
+        # Non-float dtype - equal_nan should have no effect
+        a = np.array([1, 2, 3], dtype=int)
+        assert_(np.array_equal(a, a))
+        assert_(np.array_equal(a, a, equal_nan=True))
+        # Multi-dimensional array
+        a = np.array([[0, 1], [np.nan, 1]])
+        assert_(not np.array_equal(a, a))
+        assert_(np.array_equal(a, a, equal_nan=True))
+        # Complex values
+        a, b = [np.array([1 + 1j])]*2
+        a.real, b.imag = np.nan, np.nan
+        assert_(not np.array_equal(a, b, equal_nan=False))
+        assert_(np.array_equal(a, b, equal_nan=True))
 
     def test_none_compares_elementwise(self):
         a = np.array([None, 1, None], dtype=object)
