@@ -469,7 +469,7 @@ _convert_from_array_descr(PyObject *obj, int align)
         /* Insert name into nameslist */
         Py_INCREF(name);
 
-        if (PyUString_GET_SIZE(name) == 0) {
+        if (PyUnicode_GetLength(name) == 0) {
             Py_DECREF(name);
             if (title == NULL) {
                 name = PyUString_FromFormat("f%d", i);
@@ -478,7 +478,7 @@ _convert_from_array_descr(PyObject *obj, int align)
                 }
             }
             /* On Py3, allow only non-empty Unicode strings as field names */
-            else if (PyUString_Check(title) && PyUString_GET_SIZE(title) > 0) {
+            else if (PyUnicode_Check(title) && PyUnicode_GetLength(title) > 0) {
                 name = title;
                 Py_INCREF(name);
             }
@@ -885,7 +885,17 @@ _try_convert_from_inherit_tuple(PyArray_Descr *type, PyObject *newobj)
         new->metadata = conv->metadata;
         Py_XINCREF(new->metadata);
     }
-    new->flags = conv->flags;
+    /*
+     * Certain flags must be inherited from the fields.  This is needed
+     * only for void dtypes (or subclasses of it such as a record dtype).
+     * For other dtypes, the field part will only be used for direct field
+     * access and thus flag inheritance should not be necessary.
+     * (We only allow object fields if the dtype is object as well.)
+     * This ensures copying over of the NPY_FROM_FIELDS "inherited" flags.
+     */
+    if (new->type_num == NPY_VOID) {
+        new->flags = conv->flags;
+    }
     Py_DECREF(conv);
     return new;
 
@@ -1678,14 +1688,14 @@ _convert_from_str(PyObject *obj, int align)
         }
 
         /* Check for a deprecated Numeric-style typecode */
-        char *dep_tps[] = {"Bool", "Complex", "Float", "Int",
-                           "Object0", "String0", "Timedelta64",
-                           "Unicode0", "UInt", "Void0"};
+        /* `Uint` has deliberately weird uppercasing */
+        char *dep_tps[] = {"Bytes", "Datetime64", "Str", "Uint"};
         int ndep_tps = sizeof(dep_tps) / sizeof(dep_tps[0]);
         for (int i = 0; i < ndep_tps; ++i) {
             char *dep_tp = dep_tps[i];
 
             if (strncmp(type, dep_tp, strlen(dep_tp)) == 0) {
+                /* Deprecated 2020-06-09, NumPy 1.20 */
                 if (DEPRECATE("Numeric-style type codes are "
                               "deprecated and will result in "
                               "an error in the future.") < 0) {
@@ -1801,14 +1811,14 @@ static void
 arraydescr_dealloc(PyArray_Descr *self)
 {
     if (self->fields == Py_None) {
-        fprintf(stderr, "*** Reference count error detected: \n" \
-                "an attempt was made to deallocate %d (%c) ***\n",
+        fprintf(stderr, "*** Reference count error detected: "
+                "an attempt was made to deallocate the dtype %d (%c) ***\n",
                 self->type_num, self->type);
+        assert(0);
         Py_INCREF(self);
         Py_INCREF(self);
         return;
     }
-    _dealloc_cached_buffer_info((PyObject*)self);
     Py_XDECREF(self->typeobj);
     Py_XDECREF(self->names);
     Py_XDECREF(self->fields);

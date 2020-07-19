@@ -431,10 +431,13 @@ def asarray_chkfinite(a, dtype=None, order=None):
         of lists and ndarrays.  Success requires no NaNs or Infs.
     dtype : data-type, optional
         By default, the data-type is inferred from the input data.
-    order : {'C', 'F'}, optional
-         Whether to use row-major (C-style) or
-         column-major (Fortran-style) memory representation.
-         Defaults to 'C'.
+    order : {'C', 'F', 'A', 'K'}, optional
+        Memory layout.  'A' and 'K' depend on the order of input array a.
+        'C' row-major (C-style), 
+        'F' column-major (Fortran-style) memory representation.
+        'A' (any) means 'F' if `a` is Fortran contiguous, 'C' otherwise
+        'K' (keep) preserve input order
+        Defaults to 'C'.
 
     Returns
     -------
@@ -604,14 +607,13 @@ def piecewise(x, condlist, funclist, *args, **kw):
         )
 
     y = zeros(x.shape, x.dtype)
-    for k in range(n):
-        item = funclist[k]
-        if not isinstance(item, collections.abc.Callable):
-            y[condlist[k]] = item
+    for cond, func in zip(condlist, funclist):
+        if not isinstance(func, collections.abc.Callable):
+            y[cond] = func
         else:
-            vals = x[condlist[k]]
+            vals = x[cond]
             if vals.size > 0:
-                y[condlist[k]] = item(vals, *args, **kw)
+                y[cond] = func(vals, *args, **kw)
 
     return y
 
@@ -682,8 +684,7 @@ def select(condlist, choicelist, default=0):
     choicelist = np.broadcast_arrays(*choicelist)
 
     # If cond array is not an ndarray in boolean format or scalar bool, abort.
-    for i in range(len(condlist)):
-        cond = condlist[i]
+    for i, cond in enumerate(condlist):
         if cond.dtype.type is not np.bool_:
             raise TypeError(
                 'invalid entry {} in condlist: should be boolean ndarray'.format(i))
@@ -1973,8 +1974,7 @@ class vectorize:
 
     References
     ----------
-    .. [1] NumPy Reference, section `Generalized Universal Function API
-           <https://docs.scipy.org/doc/numpy/reference/c-api.generalized-ufuncs.html>`_.
+    .. [1] :doc:`/reference/c-api/generalized-ufuncs`
 
     Examples
     --------
@@ -2546,6 +2546,69 @@ def corrcoef(x, y=None, rowvar=True, bias=np._NoValue, ddof=np._NoValue):
     for backwards compatibility with previous versions of this function.  These
     arguments had no effect on the return values of the function and can be
     safely ignored in this and previous versions of numpy.
+    
+    Examples
+    --------   
+    In this example we generate two random arrays, ``xarr`` and ``yarr``, and
+    compute the row-wise and column-wise Pearson correlation coefficients, 
+    ``R``. Since ``rowvar`` is  true by  default, we first find the row-wise
+    Pearson correlation coefficients between the variables of ``xarr``.
+
+    >>> import numpy as np
+    >>> rng = np.random.default_rng(seed=42)
+    >>> xarr = rng.random((3, 3))
+    >>> xarr
+    array([[0.77395605, 0.43887844, 0.85859792],
+           [0.69736803, 0.09417735, 0.97562235],
+           [0.7611397 , 0.78606431, 0.12811363]])
+    >>> R1 = np.corrcoef(xarr)
+    >>> R1
+    array([[ 1.        ,  0.99256089, -0.68080986],
+           [ 0.99256089,  1.        , -0.76492172],
+           [-0.68080986, -0.76492172,  1.        ]])
+    
+    If we add another set of variables and observations ``yarr``, we can 
+    compute the row-wise Pearson correlation coefficients between the
+    variables in ``xarr`` and ``yarr``.
+   
+    >>> yarr = rng.random((3, 3))
+    >>> yarr
+    array([[0.45038594, 0.37079802, 0.92676499],
+           [0.64386512, 0.82276161, 0.4434142 ],
+           [0.22723872, 0.55458479, 0.06381726]])
+    >>> R2 = np.corrcoef(xarr, yarr)
+    >>> R2
+    array([[ 1.        ,  0.99256089, -0.68080986,  0.75008178, -0.934284  ,
+            -0.99004057],
+           [ 0.99256089,  1.        , -0.76492172,  0.82502011, -0.97074098,
+            -0.99981569],
+           [-0.68080986, -0.76492172,  1.        , -0.99507202,  0.89721355,
+             0.77714685],
+           [ 0.75008178,  0.82502011, -0.99507202,  1.        , -0.93657855,
+            -0.83571711],
+           [-0.934284  , -0.97074098,  0.89721355, -0.93657855,  1.        ,
+             0.97517215],
+           [-0.99004057, -0.99981569,  0.77714685, -0.83571711,  0.97517215,
+             1.        ]])
+
+    Finally if we use the option ``rowvar=False``, the columns are now
+    being treated as the variables and we will find the column-wise Pearson 
+    correlation coefficients between variables in ``xarr`` and ``yarr``.
+
+    >>> R3 = np.corrcoef(xarr, yarr, rowvar=False)
+    >>> R3
+    array([[ 1.        ,  0.77598074, -0.47458546, -0.75078643, -0.9665554 ,
+             0.22423734],
+           [ 0.77598074,  1.        , -0.92346708, -0.99923895, -0.58826587,
+            -0.44069024],
+           [-0.47458546, -0.92346708,  1.        ,  0.93773029,  0.23297648,
+             0.75137473],
+           [-0.75078643, -0.99923895,  0.93773029,  1.        ,  0.55627469,
+             0.47536961],
+           [-0.9665554 , -0.58826587,  0.23297648,  0.55627469,  1.        ,
+            -0.46666491],
+           [ 0.22423734, -0.44069024,  0.75137473,  0.47536961, -0.46666491,
+             1.        ]])
 
     """
     if bias is not np._NoValue or ddof is not np._NoValue:
@@ -3122,7 +3185,7 @@ def i0(x):
     .. [2] M. Abramowitz and I. A. Stegun, *Handbook of Mathematical
            Functions*, 10th printing, New York: Dover, 1964, pp. 379.
            http://www.math.sfu.ca/~cbm/aands/page_379.htm
-    .. [3] http://kobesearch.cpan.org/htdocs/Math-Cephes/Math/Cephes.html
+    .. [3] https://metacpan.org/pod/distribution/Math-Cephes/lib/Math/Cephes.pod#i0:-Modified-Bessel-function-of-order-zero
 
     Examples
     --------
@@ -3882,7 +3945,13 @@ def _quantile_is_valid(q):
 
 def _lerp(a, b, t, out=None):
     """ Linearly interpolate from a to b by a factor of t """
-    return add(a*(1 - t), b*t, out=out)
+    diff_b_a = subtract(b, a)
+    # asanyarray is a stop-gap until gh-13105
+    lerp_interpolation = asanyarray(add(a, diff_b_a*t, out=out))
+    subtract(b, diff_b_a * (1 - t), out=lerp_interpolation, where=t>=0.5)
+    if lerp_interpolation.ndim == 0 and out is None:
+        lerp_interpolation = lerp_interpolation[()]  # unpack 0d arrays
+    return lerp_interpolation
 
 
 def _quantile_ureduce_func(a, q, axis=None, out=None, overwrite_input=False,

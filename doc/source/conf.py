@@ -88,7 +88,7 @@ pygments_style = 'sphinx'
 def setup(app):
     # add a config value for `ifconfig` directives
     app.add_config_value('python_version_major', str(sys.version_info.major), 'env')
-    app.add_lexer('NumPyC', NumPyLexer(stripnl=False))
+    app.add_lexer('NumPyC', NumPyLexer)
 
 # -----------------------------------------------------------------------------
 # HTML output
@@ -240,11 +240,12 @@ texinfo_documents = [
 # Intersphinx configuration
 # -----------------------------------------------------------------------------
 intersphinx_mapping = {
+    'neps': ('https://numpy.org/neps', None),
     'python': ('https://docs.python.org/dev', None),
     'scipy': ('https://docs.scipy.org/doc/scipy/reference', None),
     'matplotlib': ('https://matplotlib.org', None),
     'imageio': ('https://imageio.readthedocs.io/en/stable', None),
-    'skimage': ('https://scikit-image.org/docs/stable', None)
+    'skimage': ('https://scikit-image.org/docs/stable', None),
 }
 
 

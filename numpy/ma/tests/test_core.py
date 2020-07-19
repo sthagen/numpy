@@ -34,8 +34,8 @@ from numpy.ma.core import (
     MAError, MaskError, MaskType, MaskedArray, abs, absolute, add, all,
     allclose, allequal, alltrue, angle, anom, arange, arccos, arccosh, arctan2,
     arcsin, arctan, argsort, array, asarray, choose, concatenate,
-    conjugate, cos, cosh, count, default_fill_value, diag, divide, empty,
-    empty_like, equal, exp, flatten_mask, filled, fix_invalid,
+    conjugate, cos, cosh, count, default_fill_value, diag, divide, doc_note,
+    empty, empty_like, equal, exp, flatten_mask, filled, fix_invalid,
     flatten_structured_array, fromflex, getmask, getmaskarray, greater,
     greater_equal, identity, inner, isMaskedArray, less, less_equal, log,
     log10, make_mask, make_mask_descr, mask_or, masked, masked_array,
@@ -214,6 +214,17 @@ class TestMaskedArray:
         assert_(np.may_share_memory(x.mask, y.mask))
         y = array([1, 2, 3], mask=x._mask, copy=True)
         assert_(not np.may_share_memory(x.mask, y.mask))
+
+    def test_masked_singleton_array_creation_warns(self):
+        # The first works, but should not (ideally), there may be no way
+        # to solve this, however, as long as `np.ma.masked` is an ndarray.
+        np.array(np.ma.masked)
+        with pytest.warns(UserWarning):
+            # Tries to create a float array, using `float(np.ma.masked)`.
+            # We may want to define this is invalid behaviour in the future!
+            # (requiring np.ma.masked to be a known NumPy scalar probably
+            # with a DType.)
+            np.array([3., np.ma.masked])
 
     def test_creation_with_list_of_maskedarrays(self):
         # Tests creating a masked array from a list of masked arrays.
@@ -5283,3 +5294,33 @@ def test_mask_shape_assignment_does_not_break_masked():
     b = np.ma.array(1, mask=a.mask)
     b.shape = (1,)
     assert_equal(a.mask.shape, ())
+
+@pytest.mark.skipif(sys.flags.optimize > 1,
+                    reason="no docstrings present to inspect when PYTHONOPTIMIZE/Py_OptimizeFlag > 1")
+def test_doc_note():
+    def method(self):
+        """This docstring
+
+        Has multiple lines
+
+        And notes
+
+        Notes
+        -----
+        original note
+        """
+        pass
+
+    expected_doc = """This docstring
+
+Has multiple lines
+
+And notes
+
+Notes
+-----
+note
+
+original note"""
+
+    assert_equal(np.ma.core.doc_note(method.__doc__, "note"), expected_doc)

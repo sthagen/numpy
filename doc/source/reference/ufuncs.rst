@@ -109,7 +109,7 @@ The output of the ufunc (and its methods) is not necessarily an
 :class:`ndarray`, if all input arguments are not :class:`ndarrays <ndarray>`.
 Indeed, if any input defines an :obj:`~class.__array_ufunc__` method,
 control will be passed completely to that function, i.e., the ufunc is
-`overridden <ufuncs.overrides>`_.
+:ref:`overridden <ufuncs.overrides>`.
 
 If none of the inputs overrides the ufunc, then
 all output arrays will be passed to the :obj:`~class.__array_prepare__` and
@@ -334,6 +334,19 @@ advanced usage and will not typically be used.
     default), then this corresponds to the entire output being filled.
     Note that outputs not explicitly filled are left with their
     uninitialized values.
+
+    .. versionadded:: 1.13
+
+    Operations where ufunc input and output operands have memory overlap are
+    defined to be the same as for equivalent operations where there
+    is no memory overlap.  Operations affected make temporary copies
+    as needed to eliminate data dependency.  As detecting these cases
+    is computationally expensive, a heuristic is used, which may in rare
+    cases result in needless temporary copies.  For operations where the
+    data dependency is simple enough for the heuristic to analyze,
+    temporary copies will not be made even if the arrays overlap, if it
+    can be deduced copies are not necessary.  As an example,
+    ``np.add(a, b, out=a)`` will not involve copies.
 
 *where*
 

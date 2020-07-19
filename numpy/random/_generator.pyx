@@ -25,6 +25,7 @@ from ._common cimport (POISSON_LAM_MAX, CONS_POSITIVE, CONS_NONE,
             CONS_GT_1, CONS_POSITIVE_NOT_NAN, CONS_POISSON,
             double_fill, cont, kahan_sum, cont_broadcast_3, float_fill, cont_f,
             check_array_constraint, check_constraint, disc, discrete_broadcast_iii,
+            validate_output_shape
         )
 
 np.import_array()
@@ -646,10 +647,14 @@ cdef class Generator:
             if abs(p_sum - 1.) > atol:
                 raise ValueError("probabilities do not sum to 1")
 
-        shape = size
-        if shape is not None:
+        # `shape == None` means `shape == ()`, but with scalar unpacking at the
+        # end
+        is_scalar = size is None
+        if not is_scalar:
+            shape = size
             size = np.prod(shape, dtype=np.intp)
         else:
+            shape = ()
             size = 1
 
         # Actual sampling
@@ -733,10 +738,9 @@ cdef class Generator:
                                 idx_data[j - pop_size_i + size_i] = j
                         if shuffle:
                             self._shuffle_int(size_i, 1, idx_data)
-                if shape is not None:
-                    idx.shape = shape
+                idx.shape = shape
 
-        if shape is None and isinstance(idx, np.ndarray):
+        if is_scalar and isinstance(idx, np.ndarray):
             # In most cases a scalar will have been made an array
             idx = idx.item(0)
 
@@ -744,7 +748,7 @@ cdef class Generator:
         if a.ndim == 0:
             return idx
 
-        if shape is not None and idx.ndim == 0:
+        if not is_scalar and idx.ndim == 0:
             # If size == () then the user requested a 0-d array as opposed to
             # a scalar object when size is None. However a[idx] is always a
             # scalar and not an array. So this makes sure the result is an
@@ -2776,7 +2780,7 @@ cdef class Generator:
         generate zero positive results.
 
         >>> sum(rng.binomial(9, 0.1, 20000) == 0)/20000.
-        # answer = 0.38885, or 38%.
+        # answer = 0.38885, or 39%.
 
         """
 
@@ -2806,6 +2810,7 @@ cdef class Generator:
             cnt = np.PyArray_SIZE(randoms)
 
             it = np.PyArray_MultiIterNew3(randoms, p_arr, n_arr)
+            validate_output_shape(it.shape, randoms)
             with self.lock, nogil:
                 for i in range(cnt):
                     _dp = (<double*>np.PyArray_MultiIter_DATA(it, 1))[0]
@@ -3342,7 +3347,8 @@ cdef class Generator:
     def multivariate_normal(self, mean, cov, size=None, check_valid='warn',
                             tol=1e-8, *, method='svd'):
         """
-        multivariate_normal(mean, cov, size=None, check_valid='warn', tol=1e-8)
+        multivariate_normal(mean, cov, size=None, check_valid='warn',
+                            tol=1e-8, *, method='svd')
 
         Draw random samples from a multivariate normal distribution.
 
@@ -3602,7 +3608,7 @@ cdef class Generator:
         Now, do one experiment throwing the dice 10 time, and 10 times again,
         and another throwing the dice 20 times, and 20 times again:
 
-        >>> rng.multinomial([[10], [20]], [1/6.]*6, size=2)
+        >>> rng.multinomial([[10], [20]], [1/6.]*6, size=(2, 2))
         array([[[2, 4, 0, 1, 2, 1],
                 [1, 3, 0, 3, 1, 2]],
                [[1, 4, 4, 4, 4, 3],
@@ -3657,6 +3663,7 @@ cdef class Generator:
                 temp = np.empty(size, dtype=np.int8)
                 temp_arr = <np.ndarray>temp
                 it = np.PyArray_MultiIterNew2(on, temp_arr)
+                validate_output_shape(it.shape, temp_arr)
             shape = it.shape + (d,)
             multin = np.zeros(shape, dtype=np.int64)
             mnarr = <np.ndarray>multin
@@ -4345,6 +4352,59 @@ def default_rng(seed=None):
     -----
     If ``seed`` is not a `BitGenerator` or a `Generator`, a new `BitGenerator`
     is instantiated. This function does not manage a default global instance.
+    
+    Examples
+    --------
+    ``default_rng`` is the reccomended constructor for the random number class
+    ``Generator``. Here are several ways we can construct a random 
+    number generator using ``default_rng`` and the ``Generator`` class. 
+    
+    Here we use ``default_rng`` to generate a random float:
+ 
+    >>> import numpy as np
+    >>> rng = np.random.default_rng(12345)
+    >>> print(rng)
+    Generator(PCG64)
+    >>> rfloat = rng.random()
+    >>> rfloat
+    0.22733602246716966
+    >>> type(rfloat)
+    <class 'float'>
+     
+    Here we use ``default_rng`` to generate 3 random integers between 0 
+    (inclusive) and 10 (exclusive):
+        
+    >>> import numpy as np
+    >>> rng = np.random.default_rng(12345)
+    >>> rints = rng.integers(low=0, high=10, size=3)
+    >>> rints
+    array([6, 2, 7])
+    >>> type(rints[0])
+    <class 'numpy.int64'>
+    
+    Here we specify a seed so that we have reproducible results:
+    
+    >>> import numpy as np
+    >>> rng = np.random.default_rng(seed=42)
+    >>> print(rng)
+    Generator(PCG64)
+    >>> arr1 = rng.random((3, 3))
+    >>> arr1
+    array([[0.77395605, 0.43887844, 0.85859792],
+           [0.69736803, 0.09417735, 0.97562235],
+           [0.7611397 , 0.78606431, 0.12811363]])
+
+    If we exit and restart our Python interpreter, we'll see that we
+    generate the same random numbers again:
+
+    >>> import numpy as np
+    >>> rng = np.random.default_rng(seed=42)
+    >>> arr2 = rng.random((3, 3))
+    >>> arr2
+    array([[0.77395605, 0.43887844, 0.85859792],
+           [0.69736803, 0.09417735, 0.97562235],
+           [0.7611397 , 0.78606431, 0.12811363]])
+
     """
     if _check_bit_generator(seed):
         # We were passed a BitGenerator, so just wrap it up.

@@ -42,13 +42,6 @@ class TestRegression:
                 b = pickle.load(f)
             assert_array_equal(a, b)
 
-    def test_typeNA(self):
-        # Issue gh-515
-        with suppress_warnings() as sup:
-            sup.filter(np.VisibleDeprecationWarning)
-            assert_equal(np.typeNA[np.int64], 'Int64')
-            assert_equal(np.typeNA[np.uint64], 'UInt64')
-
     def test_dtype_names(self):
         # Ticket #35
         # Should succeed
@@ -2332,6 +2325,10 @@ class TestRegression:
         # allowed as a special case due to existing use, see gh-2798
         a = np.ones(1, dtype=('O', [('name', 'O')]))
         assert_equal(a[0], 1)
+        # In particular, the above union dtype (and union dtypes in general)
+        # should mainly behave like the main (object) dtype:
+        assert a[0] is a.item()
+        assert type(a[0]) is int
 
     def test_correct_hash_dict(self):
         # gh-8887 - __hash__ would be None despite tp_hash being set
@@ -2457,7 +2454,8 @@ class TestRegression:
         class T:
             __array_interface__ = {}
 
-        np.array([T()])
+        with assert_raises(ValueError):
+            np.array([T()])
 
     def test_2d__array__shape(self):
         class T(object):

@@ -738,6 +738,8 @@ def configuration(parent_package='',top_path=None):
             join('src', 'common', 'ufunc_override.h'),
             join('src', 'common', 'umathmodule.h'),
             join('src', 'common', 'numpyos.h'),
+            join('src', 'common', 'npy_cpu_dispatch.h'),
+            join('src', 'common', 'simd', 'simd.h'),
             ]
 
     common_src = [
@@ -773,9 +775,11 @@ def configuration(parent_package='',top_path=None):
     #######################################################################
 
     multiarray_deps = [
+            join('src', 'multiarray', 'abstractdtypes.h'),
             join('src', 'multiarray', 'arrayobject.h'),
             join('src', 'multiarray', 'arraytypes.h'),
             join('src', 'multiarray', 'arrayfunction_override.h'),
+            join('src', 'multiarray', 'array_coercion.h'),
             join('src', 'multiarray', 'npy_buffer.h'),
             join('src', 'multiarray', 'calculation.h'),
             join('src', 'multiarray', 'common.h'),
@@ -824,9 +828,11 @@ def configuration(parent_package='',top_path=None):
             ] + npysort_sources + npymath_sources
 
     multiarray_src = [
+            join('src', 'multiarray', 'abstractdtypes.c'),
             join('src', 'multiarray', 'alloc.c'),
             join('src', 'multiarray', 'arrayobject.c'),
             join('src', 'multiarray', 'arraytypes.c.src'),
+            join('src', 'multiarray', 'array_coercion.c'),
             join('src', 'multiarray', 'array_assign_scalar.c'),
             join('src', 'multiarray', 'array_assign_array.c'),
             join('src', 'multiarray', 'arrayfunction_override.c'),
@@ -939,8 +945,11 @@ def configuration(parent_package='',top_path=None):
     #                        umath_tests module                           #
     #######################################################################
 
-    config.add_extension('_umath_tests',
-                    sources=[join('src', 'umath', '_umath_tests.c.src')])
+    config.add_extension('_umath_tests', sources=[
+        join('src', 'umath', '_umath_tests.c.src'),
+        join('src', 'umath', '_umath_tests.dispatch.c'),
+        join('src', 'common', 'npy_cpu_features.c.src'),
+    ])
 
     #######################################################################
     #                   custom rational dtype module                      #
@@ -967,6 +976,7 @@ def configuration(parent_package='',top_path=None):
     config.add_subpackage('tests')
     config.add_data_dir('tests/data')
     config.add_data_dir('tests/examples')
+    config.add_data_files('*.pyi')
 
     config.make_svn_version_py()
 
