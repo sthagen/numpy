@@ -141,9 +141,9 @@ def empty_like(prototype, dtype=None, order=None, subok=None, shape=None):
 
 
 @array_function_from_c_func_and_dispatcher(_multiarray_umath.concatenate)
-def concatenate(arrays, axis=None, out=None):
+def concatenate(arrays, axis=None, out=None, *, dtype=None, casting=None):
     """
-    concatenate((a1, a2, ...), axis=0, out=None)
+    concatenate((a1, a2, ...), axis=0, out=None, dtype=None, casting="same_kind")
 
     Join a sequence of arrays along an existing axis.
 
@@ -159,6 +159,16 @@ def concatenate(arrays, axis=None, out=None):
         If provided, the destination to place the result. The shape must be
         correct, matching that of what concatenate would have returned if no
         out argument were specified.
+    dtype : str or dtype
+        If provided, the destination array will have this dtype. Cannot be
+        provided together with `out`.
+
+        .. versionadded:: 1.20.0
+
+    casting : {'no', 'equiv', 'safe', 'same_kind', 'unsafe'}, optional
+        Controls what kind of data casting may occur. Defaults to 'same_kind'.
+
+        .. versionadded:: 1.20.0
 
     Returns
     -------
@@ -396,7 +406,7 @@ def lexsort(keys, axis=None):
     for the primary sort order, the second-to-last key for the secondary sort
     order, and so on. The keys argument must be a sequence of objects that
     can be converted to arrays of the same shape. If a 2D array is provided
-    for the keys argument, it's rows are interpreted as the sorting keys and
+    for the keys argument, its rows are interpreted as the sorting keys and
     sorting is according to the last row, second last row etc.
 
     Parameters
@@ -1090,7 +1100,7 @@ def putmask(a, mask, values):
 
     Parameters
     ----------
-    a : array_like
+    a : ndarray
         Target array.
     mask : array_like
         Boolean mask array. It has to be the same shape as `a`.

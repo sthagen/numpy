@@ -460,7 +460,7 @@ def repeat(a, repeats, axis=None):
     --------
     tile : Tile an array.
     unique : Find the unique elements of an array.
-    
+
     Examples
     --------
     >>> np.repeat(3, 4)
@@ -2007,8 +2007,8 @@ def compress(condition, a, axis=None, out=None):
     --------
     take, choose, diag, diagonal, select
     ndarray.compress : Equivalent method in ndarray
-    np.extract: Equivalent method when working on 1-D arrays
-    ufuncs-output-type
+    extract: Equivalent method when working on 1-D arrays
+    :ref:`ufuncs-output-type`
 
     Examples
     --------
@@ -2059,15 +2059,10 @@ def clip(a, a_min, a_max, out=None, **kwargs):
     ----------
     a : array_like
         Array containing elements to clip.
-    a_min : scalar or array_like or None
-        Minimum value. If None, clipping is not performed on lower
-        interval edge. Not more than one of `a_min` and `a_max` may be
-        None.
-    a_max : scalar or array_like or None
-        Maximum value. If None, clipping is not performed on upper
-        interval edge. Not more than one of `a_min` and `a_max` may be
-        None. If `a_min` or `a_max` are array_like, then the three
-        arrays will be broadcasted to match their shapes.
+    a_min, a_max : array_like or None
+        Minimum and maximum value. If ``None``, clipping is not performed on
+        the corresponding edge. Only one of `a_min` and `a_max` may be
+        ``None``. Both are broadcast against `a`.
     out : ndarray, optional
         The results will be placed in this array. It may be the input
         array for in-place clipping.  `out` must be of the right shape
@@ -2087,7 +2082,7 @@ def clip(a, a_min, a_max, out=None, **kwargs):
 
     See Also
     --------
-    ufuncs-output-type
+    :ref:`ufuncs-output-type`
 
     Examples
     --------
@@ -2283,7 +2278,7 @@ def any(a, axis=None, out=None, keepdims=np._NoValue):
         the same shape as the expected output and its type is preserved
         (e.g., if it is of type float, then it will remain so, returning
         1.0 for True and 0.0 for False, regardless of the type of `a`).
-        See `ufuncs-output-type` for more details.
+        See :ref:`ufuncs-output-type` for more details.
 
     keepdims : bool, optional
         If this is set to True, the axes which are reduced are left
@@ -2368,7 +2363,7 @@ def all(a, axis=None, out=None, keepdims=np._NoValue):
         Alternate output array in which to place the result.
         It must have the same shape as the expected output and its
         type is preserved (e.g., if ``dtype(out)`` is float, the result
-        will consist of 0.0's and 1.0's). See `ufuncs-output-type` for more
+        will consist of 0.0's and 1.0's). See :ref:`ufuncs-output-type` for more
         details.
 
     keepdims : bool, optional
@@ -2447,7 +2442,7 @@ def cumsum(a, axis=None, dtype=None, out=None):
     out : ndarray, optional
         Alternative output array in which to place the result. It must
         have the same shape and buffer length as the expected output
-        but the type will be cast if necessary. See `ufuncs-output-type` for
+        but the type will be cast if necessary. See :ref:`ufuncs-output-type` for
         more details.
 
     Returns
@@ -2618,7 +2613,7 @@ def amax(a, axis=None, out=None, keepdims=np._NoValue, initial=np._NoValue,
     out : ndarray, optional
         Alternative output array in which to place the result.  Must
         be of the same shape and buffer length as the expected output.
-        See `ufuncs-output-type` for more details.
+        See :ref:`ufuncs-output-type` for more details.
 
     keepdims : bool, optional
         If this is set to True, the axes which are reduced are left
@@ -2743,7 +2738,7 @@ def amin(a, axis=None, out=None, keepdims=np._NoValue, initial=np._NoValue,
     out : ndarray, optional
         Alternative output array in which to place the result.  Must
         be of the same shape and buffer length as the expected output.
-        See `ufuncs-output-type` for more details.
+        See :ref:`ufuncs-output-type` for more details.
 
     keepdims : bool, optional
         If this is set to True, the axes which are reduced are left
@@ -2953,7 +2948,7 @@ def prod(a, axis=None, dtype=None, out=None, keepdims=np._NoValue,
     See Also
     --------
     ndarray.prod : equivalent method
-    ufuncs-output-type
+    :ref:`ufuncs-output-type`
 
     Notes
     -----
@@ -3049,7 +3044,7 @@ def cumprod(a, axis=None, dtype=None, out=None):
 
     See Also
     --------
-    ufuncs-output-type
+    :ref:`ufuncs-output-type`
 
     Notes
     -----
@@ -3195,7 +3190,7 @@ def around(a, decimals=0, out=None):
     out : ndarray, optional
         Alternative output array in which to place the result. It must have
         the same shape as the expected output, but the type of the output
-        values will be cast if necessary. See `ufuncs-output-type` for more
+        values will be cast if necessary. See :ref:`ufuncs-output-type` for more
         details.
 
     Returns
@@ -3310,7 +3305,7 @@ def mean(a, axis=None, dtype=None, out=None, keepdims=np._NoValue):
         Alternate output array in which to place the result.  The default
         is ``None``; if provided, it must have the same shape as the
         expected output, but the type will be cast if necessary.
-        See `ufuncs-output-type` for more details.
+        See :ref:`ufuncs-output-type` for more details.
 
     keepdims : bool, optional
         If this is set to True, the axes which are reduced are left
@@ -3445,12 +3440,12 @@ def std(a, axis=None, dtype=None, out=None, ddof=0, keepdims=np._NoValue):
     See Also
     --------
     var, mean, nanmean, nanstd, nanvar
-    ufuncs-output-type
+    :ref:`ufuncs-output-type`
 
     Notes
     -----
     The standard deviation is the square root of the average of the squared
-    deviations from the mean, i.e., ``std = sqrt(mean(x))``, where 
+    deviations from the mean, i.e., ``std = sqrt(mean(x))``, where
     ``x = abs(a - a.mean())**2``.
 
     The average squared deviation is typically calculated as ``x.sum() / N``,
@@ -3571,7 +3566,7 @@ def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=np._NoValue):
     See Also
     --------
     std, mean, nanmean, nanstd, nanvar
-    ufuncs-output-type
+    :ref:`ufuncs-output-type`
 
     Notes
     -----

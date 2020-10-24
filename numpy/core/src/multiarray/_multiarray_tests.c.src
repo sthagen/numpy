@@ -9,8 +9,6 @@
 #include "common.h"
 #include "mem_overlap.h"
 #include "npy_extint128.h"
-#include "common.h"
-
 
 #if defined(MS_WIN32) || defined(__CYGWIN__)
 #define EXPORT(x) __declspec(dllexport) x
@@ -178,17 +176,20 @@ test_neighborhood_iterator(PyObject* NPY_UNUSED(self), PyObject* args)
     /* Compute boundaries for the neighborhood iterator */
     for (i = 0; i < 2 * PyArray_NDIM(ax); ++i) {
         PyObject* bound;
+
         bound = PySequence_GetItem(b, i);
         if (bound == NULL) {
             goto clean_itx;
         }
-        if (!PyInt_Check(bound)) {
+        /* PyLong_AsSsize checks for PyLong */
+        bounds[i] = PyLong_AsSsize_t(bound);
+        if (error_converting(bounds[i])) {
+            PyErr_Clear();
             PyErr_SetString(PyExc_ValueError,
-                    "bound not long");
+                    "bound is invalid");
             Py_DECREF(bound);
             goto clean_itx;
         }
-        bounds[i] = PyInt_AsLong(bound);
         Py_DECREF(bound);
     }
 
@@ -337,17 +338,20 @@ test_neighborhood_iterator_oob(PyObject* NPY_UNUSED(self), PyObject* args)
     /* Compute boundaries for the neighborhood iterator */
     for (i = 0; i < 2 * PyArray_NDIM(ax); ++i) {
         PyObject* bound;
+
         bound = PySequence_GetItem(b1, i);
         if (bound == NULL) {
             goto clean_itx;
         }
-        if (!PyInt_Check(bound)) {
+        /* PyLong_AsSsize checks for PyLong */
+        bounds[i] = PyLong_AsSsize_t(bound);
+        if (error_converting(bounds[i])) {
+            PyErr_Clear();
             PyErr_SetString(PyExc_ValueError,
-                    "bound not long");
+                    "bound is invalid");
             Py_DECREF(bound);
             goto clean_itx;
         }
-        bounds[i] = PyInt_AsLong(bound);
         Py_DECREF(bound);
     }
 
@@ -361,17 +365,20 @@ test_neighborhood_iterator_oob(PyObject* NPY_UNUSED(self), PyObject* args)
 
     for (i = 0; i < 2 * PyArray_NDIM(ax); ++i) {
         PyObject* bound;
+
         bound = PySequence_GetItem(b2, i);
         if (bound == NULL) {
             goto clean_itx;
         }
-        if (!PyInt_Check(bound)) {
+        /* PyLong_AsSsize checks for PyLong */
+        bounds[i] = PyLong_AsSsize_t(bound);
+        if (error_converting(bounds[i])) {
+            PyErr_Clear();
             PyErr_SetString(PyExc_ValueError,
-                    "bound not long");
+                    "bound is invalid");
             Py_DECREF(bound);
             goto clean_itx;
         }
-        bounds[i] = PyInt_AsLong(bound);
         Py_DECREF(bound);
     }
 
@@ -609,6 +616,71 @@ fromstring_null_term_c_api(PyObject *dummy, PyObject *byte_obj)
     }
     descr = PyArray_DescrNewFromType(NPY_FLOAT64);
     return PyArray_FromString(string, -1, descr, -1, " ");
+}
+
+
+/*
+ * Create a custom field dtype from an existing void one (and test some errors).
+ * The dtypes created by this function may be not be usable (or even crash
+ * while using).
+ */
+static PyObject *
+create_custom_field_dtype(PyObject *NPY_UNUSED(mod), PyObject *args)
+{
+    PyArray_Descr *dtype;
+    PyTypeObject *scalar_type;
+    PyTypeObject *original_type = NULL;
+    int error_path;
+
+    if (!PyArg_ParseTuple(args, "O!O!i",
+            &PyArrayDescr_Type, &dtype,
+            &PyType_Type, &scalar_type,
+            &error_path)) {
+        return NULL;
+    }
+    /* check that the result should be more or less valid */
+    if (dtype->type_num != NPY_VOID || dtype->fields == NULL ||
+            !PyDict_CheckExact(dtype->fields) ||
+            PyTuple_Size(dtype->names) != 1 ||
+            !PyDataType_REFCHK(dtype) ||
+            dtype->elsize != sizeof(PyObject *)) {
+        PyErr_SetString(PyExc_ValueError,
+                "Bad dtype passed to test function, must be an object "
+                "containing void with a single field.");
+        return NULL;
+    }
+
+    /* Copy and then appropriate this dtype */
+    original_type = Py_TYPE(dtype);
+    dtype = PyArray_DescrNew(dtype);
+    if (dtype == NULL) {
+        return NULL;
+    }
+
+    Py_INCREF(scalar_type);
+    Py_SETREF(dtype->typeobj, scalar_type);
+    if (error_path == 1) {
+        /* Test that we reject this, if fields was not already set */
+        Py_SETREF(dtype->fields, NULL);
+    }
+    else if (error_path == 2) {
+        /*
+         * Test that we reject this if the type is not set to something that
+         * we are pretty sure can be safely replaced.
+         */
+        Py_SET_TYPE(dtype, scalar_type);
+    }
+    else if (error_path != 0) {
+        PyErr_SetString(PyExc_ValueError,
+                "invalid error argument to test function.");
+    }
+    if (PyArray_RegisterDataType(dtype) < 0) {
+        /* Fix original type in the error_path == 2 case. */
+        Py_SET_TYPE(dtype, original_type);
+        return NULL;
+    }
+    Py_INCREF(dtype);
+    return (PyObject *)dtype;
 }
 
 
@@ -1155,11 +1227,11 @@ array_solve_diophantine(PyObject *NPY_UNUSED(ignored), PyObject *args, PyObject 
     }
 
     for (j = 0; j < nterms; ++j) {
-        terms[j].a = (npy_int64)PyInt_AsSsize_t(PyTuple_GET_ITEM(A, j));
+        terms[j].a = (npy_int64)PyLong_AsSsize_t(PyTuple_GET_ITEM(A, j));
         if (error_converting(terms[j].a)) {
             goto fail;
         }
-        terms[j].ub = (npy_int64)PyInt_AsSsize_t(PyTuple_GET_ITEM(U, j));
+        terms[j].ub = (npy_int64)PyLong_AsSsize_t(PyTuple_GET_ITEM(U, j));
         if (error_converting(terms[j].ub)) {
             goto fail;
         }
@@ -1735,8 +1807,8 @@ get_struct_alignments(PyObject *NPY_UNUSED(self), PyObject *args) {
 /**begin repeat
  * #N = 1,2,3#
  */
-    alignment = PyInt_FromLong(_ALIGN(struct TestStruct@N@));
-    size = PyInt_FromLong(sizeof(struct TestStruct@N@));
+    alignment = PyLong_FromLong(_ALIGN(struct TestStruct@N@));
+    size = PyLong_FromLong(sizeof(struct TestStruct@N@));
     val = PyTuple_Pack(2, alignment, size);
     Py_DECREF(alignment);
     Py_DECREF(size);
@@ -1902,7 +1974,7 @@ PrintFloat_Printf_g(PyObject *obj, int precision)
         PyOS_snprintf(str, sizeof(str), "%.*g", precision, val);
     }
 
-    return PyUString_FromString(str);
+    return PyUnicode_FromString(str);
 }
 
 
@@ -1952,7 +2024,7 @@ run_byteorder_converter(PyObject* NPY_UNUSED(self), PyObject *args)
         case NPY_SWAP: return PyUnicode_FromString("NPY_SWAP");
         case NPY_IGNORE: return PyUnicode_FromString("NPY_IGNORE");
     }
-    return PyInt_FromLong(byteorder);
+    return PyLong_FromLong(byteorder);
 }
 
 static PyObject *
@@ -1967,7 +2039,7 @@ run_sortkind_converter(PyObject* NPY_UNUSED(self), PyObject *args)
         case NPY_HEAPSORT: return PyUnicode_FromString("NPY_HEAPSORT");
         case NPY_STABLESORT: return PyUnicode_FromString("NPY_STABLESORT");
     }
-    return PyInt_FromLong(kind);
+    return PyLong_FromLong(kind);
 }
 
 static PyObject *
@@ -1980,7 +2052,7 @@ run_selectkind_converter(PyObject* NPY_UNUSED(self), PyObject *args)
     switch (kind) {
         case NPY_INTROSELECT: return PyUnicode_FromString("NPY_INTROSELECT");
     }
-    return PyInt_FromLong(kind);
+    return PyLong_FromLong(kind);
 }
 
 static PyObject *
@@ -1994,7 +2066,7 @@ run_searchside_converter(PyObject* NPY_UNUSED(self), PyObject *args)
         case NPY_SEARCHLEFT: return PyUnicode_FromString("NPY_SEARCHLEFT");
         case NPY_SEARCHRIGHT: return PyUnicode_FromString("NPY_SEARCHRIGHT");
     }
-    return PyInt_FromLong(side);
+    return PyLong_FromLong(side);
 }
 
 static PyObject *
@@ -2010,7 +2082,7 @@ run_order_converter(PyObject* NPY_UNUSED(self), PyObject *args)
         case NPY_FORTRANORDER: return PyUnicode_FromString("NPY_FORTRANORDER");
         case NPY_KEEPORDER: return PyUnicode_FromString("NPY_KEEPORDER");
     }
-    return PyInt_FromLong(order);
+    return PyLong_FromLong(order);
 }
 
 static PyObject *
@@ -2025,7 +2097,7 @@ run_clipmode_converter(PyObject* NPY_UNUSED(self), PyObject *args)
         case NPY_WRAP: return PyUnicode_FromString("NPY_WRAP");
         case NPY_RAISE: return PyUnicode_FromString("NPY_RAISE");
     }
-    return PyInt_FromLong(mode);
+    return PyLong_FromLong(mode);
 }
 
 static PyObject *
@@ -2042,7 +2114,7 @@ run_casting_converter(PyObject* NPY_UNUSED(self), PyObject *args)
         case NPY_SAME_KIND_CASTING: return PyUnicode_FromString("NPY_SAME_KIND_CASTING");
         case NPY_UNSAFE_CASTING: return PyUnicode_FromString("NPY_UNSAFE_CASTING");
     }
-    return PyInt_FromLong(casting);
+    return PyLong_FromLong(casting);
 }
 
 static PyObject *
@@ -2083,6 +2155,9 @@ static PyMethodDef Multiarray_TestsMethods[] = {
     {"fromstring_null_term_c_api",
         fromstring_null_term_c_api,
         METH_O, NULL},
+    {"create_custom_field_dtype",
+        create_custom_field_dtype,
+        METH_VARARGS, NULL},
     {"incref_elide",
         incref_elide,
         METH_VARARGS, NULL},

@@ -6,6 +6,7 @@ import gc
 
 import numpy as np
 from numpy.core._rational_tests import rational
+from numpy.core._multiarray_tests import create_custom_field_dtype
 from numpy.testing import (
     assert_, assert_equal, assert_array_equal, assert_raises, HAS_REFCOUNT)
 from numpy.compat import pickle
@@ -766,6 +767,26 @@ class TestMonsterType:
             ('yi', np.dtype((a, (3, 2))))])
         assert_dtype_equal(c, d)
 
+    def test_list_recursion(self):
+        l = list()
+        l.append(('f', l))
+        with pytest.raises(RecursionError):
+            np.dtype(l)
+
+    def test_tuple_recursion(self):
+        d = np.int32
+        for i in range(100000):
+            d = (d, (1,))
+        with pytest.raises(RecursionError):
+            np.dtype(d)
+
+    def test_dict_recursion(self):
+        d = dict(names=['self'], formats=[None], offsets=[0])
+        d['formats'][0] = d
+        with pytest.raises(RecursionError):
+            np.dtype(d)
+
+
 class TestMetadata:
     def test_no_metadata(self):
         d = np.dtype(int)
@@ -1338,3 +1359,35 @@ class TestFromCTypes:
         pair_type = np.dtype('{},{}'.format(*pair))
         expected = np.dtype([('f0', pair[0]), ('f1', pair[1])])
         assert_equal(pair_type, expected)
+
+
+class TestUserDType:
+    @pytest.mark.leaks_references(reason="dynamically creates custom dtype.")
+    def test_custom_structured_dtype(self):
+        class mytype:
+            pass
+
+        blueprint = np.dtype([("field", object)])
+        dt = create_custom_field_dtype(blueprint, mytype, 0)
+        assert dt.type == mytype
+        # We cannot (currently) *create* this dtype with `np.dtype` because
+        # mytype does not inherit from `np.generic`.  This seems like an
+        # unnecessary restriction, but one that has been around forever:
+        assert np.dtype(mytype) == np.dtype("O")
+
+    def test_custom_structured_dtype_errors(self):
+        class mytype:
+            pass
+
+        blueprint = np.dtype([("field", object)])
+
+        with pytest.raises(ValueError):
+            # Tests what happens if fields are unset during creation
+            # which is currently rejected due to the containing object
+            # (see PyArray_RegisterDataType).
+            create_custom_field_dtype(blueprint, mytype, 1)
+
+        with pytest.raises(RuntimeError):
+            # Tests that a dtype must have its type field set up to np.dtype
+            # or in this case a builtin instance.
+            create_custom_field_dtype(blueprint, mytype, 2)
