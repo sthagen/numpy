@@ -122,6 +122,9 @@ def main(argv):
                         help="Specify a list of dispatched CPU optimizations"),
     parser.add_argument("--disable-optimization", action="store_true",
                         help="Disable CPU optimized code(dispatch,simd,fast...)"),
+    parser.add_argument("--simd-test", default=None,
+                        help="Specify a list of CPU optimizations to be "
+                             "tested against NumPy SIMD interface"),
     parser.add_argument("--show-build-log", action="store_true",
                         help="Show build output rather than using a log file")
     parser.add_argument("--bench", action="store_true",
@@ -429,8 +432,6 @@ def build_project(args):
     cmd += ["build"]
     if args.parallel > 1:
         cmd += ["-j", str(args.parallel)]
-    if args.debug_info:
-        cmd += ["build_src", "--verbose-cfg"]
     if args.warn_error:
         cmd += ["--warn-error"]
     if args.cpu_baseline:
@@ -439,6 +440,10 @@ def build_project(args):
         cmd += ["--cpu-dispatch", args.cpu_dispatch]
     if args.disable_optimization:
         cmd += ["--disable-optimization"]
+    if args.simd_test is not None:
+        cmd += ["--simd-test", args.simd_test]
+    if args.debug_info:
+        cmd += ["build_src", "--verbose-cfg"]
     # Install; avoid producing eggs so numpy can be imported from dst_dir.
     cmd += ['install', '--prefix=' + dst_dir,
             '--single-version-externally-managed',
@@ -519,6 +524,7 @@ def asv_compare_config(bench_path, args, h_commits):
 
     is_cached = asv_substitute_config(conf_path, nconf_path,
         numpy_build_options = ' '.join([f'\\"{v}\\"' for v in build]),
+        numpy_global_options= ' '.join([f'--global-option=\\"{v}\\"' for v in ["build"] + build])
     )
     if not is_cached:
         asv_clear_cache(bench_path, h_commits)
@@ -533,7 +539,7 @@ def asv_clear_cache(bench_path, h_commits, env_dir="env"):
     for asv_build_cache in glob.glob(asv_build_pattern, recursive=True):
         for c in h_commits:
             try: shutil.rmtree(os.path.join(asv_build_cache, c))
-            except OSError: pass 
+            except OSError: pass
 
 def asv_substitute_config(in_config, out_config, **custom_vars):
     """

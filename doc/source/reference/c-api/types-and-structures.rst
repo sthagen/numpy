@@ -7,7 +7,7 @@ Python Types and C-Structures
 
 Several new types are defined in the C-code. Most of these are
 accessible from Python, but a few are not exposed due to their limited
-use. Every new Python type has an associated :c:type:`PyObject *<PyObject>` with an
+use. Every new Python type has an associated :c:expr:`PyObject *` with an
 internal structure that includes a pointer to a "method table" that
 defines how the new object behaves in Python. When you receive a
 Python object into C code, you always get a pointer to a
@@ -61,7 +61,7 @@ hierarchy of actual Python types.
 PyArray_Type and PyArrayObject
 ------------------------------
 
-.. c:var:: PyArray_Type
+.. c:var:: PyTypeObject PyArray_Type
 
    The Python type of the ndarray is :c:data:`PyArray_Type`. In C, every
    ndarray is a pointer to a :c:type:`PyArrayObject` structure. The ob_type
@@ -69,6 +69,7 @@ PyArray_Type and PyArrayObject
    typeobject.
 
 .. c:type:: PyArrayObject
+            NPY_AO
 
    The :c:type:`PyArrayObject` C-structure contains all of the required
    information for an array. All instances of an ndarray (and its
@@ -77,7 +78,9 @@ PyArray_Type and PyArrayObject
    provided macros. If you need a shorter name, then you can make use
    of :c:type:`NPY_AO` (deprecated) which is defined to be equivalent to
    :c:type:`PyArrayObject`. Direct access to the struct fields are
-   deprecated. Use the `PyArray_*(arr)` form instead.
+   deprecated. Use the ``PyArray_*(arr)`` form instead.
+   As of NumPy 1.20, the size of this struct is not considered part of
+   the NumPy ABI (see note at the end of the member list).
 
    .. code-block:: c
 
@@ -91,6 +94,7 @@ PyArray_Type and PyArrayObject
           PyArray_Descr *descr;
           int flags;
           PyObject *weakreflist;
+          /* version dependend private members */
       } PyArrayObject;
 
    .. c:macro:: PyObject_HEAD
@@ -172,11 +176,32 @@ PyArray_Type and PyArrayObject
        This member allows array objects to have weak references (using the
        weakref module).
 
+   .. note::
+
+      Further members are considered private and version dependend. If the size
+      of the struct is important for your code, special care must be taken.
+      A possible use-case when this is relevant is subclassing in C.
+      If your code relies on ``sizeof(PyArrayObject)`` to be constant,
+      you must add the following check at import time:
+
+      .. code-block:: c
+
+         if (sizeof(PyArrayObject) < PyArray_Type.tp_basicsize) {
+             PyErr_SetString(PyExc_ImportError,
+                "Binary incompatibility with NumPy, must recompile/update X.");
+             return NULL;
+         }
+
+      To ensure that your code does not have to be compiled for a specific
+      NumPy version, you may add a constant, leaving room for changes in NumPy.
+      A solution guaranteed to be compatible with any future NumPy version
+      requires the use of a runtime calculate offset and allocation size.
+
 
 PyArrayDescr_Type and PyArray_Descr
 -----------------------------------
 
-.. c:var:: PyArrayDescr_Type
+.. c:var:: PyTypeObject PyArrayDescr_Type
 
    The :c:data:`PyArrayDescr_Type` is the built-in type of the
    data-type-descriptor objects used to describe how the bytes comprising
@@ -411,7 +436,8 @@ PyArrayDescr_Type and PyArray_Descr
        Metadata specific to the C implementation
        of the particular dtype. Added for NumPy 1.7.0.
 
-   .. c:member:: Npy_hash_t *hash
+   .. c:type:: npy_hash_t
+   .. c:member:: npy_hash_t *hash
 
        Currently unused. Reserved for future use in caching
        hash values.
@@ -610,7 +636,8 @@ PyArrayDescr_Type and PyArray_Descr
 
         Either ``NULL`` or a dictionary containing low-level casting
         functions for user- defined data-types. Each function is
-        wrapped in a :c:type:`PyCObject *` and keyed by the data-type number.
+        wrapped in a :c:expr:`PyCapsule *` and keyed by
+        the data-type number.
 
     .. c:member:: NPY_SCALARKIND scalarkind(PyArrayObject* arr)
 
@@ -727,7 +754,7 @@ The :c:data:`PyArray_Type` can also be sub-typed.
 PyUFunc_Type and PyUFuncObject
 ------------------------------
 
-.. c:var:: PyUFunc_Type
+.. c:var:: PyTypeObject PyUFunc_Type
 
    The ufunc object is implemented by creation of the
    :c:data:`PyUFunc_Type`. It is a very simple type that implements only
@@ -789,8 +816,8 @@ PyUFunc_Type and PyUFuncObject
           npy_uint32 *iter_flags;
           /* new in API version 0x0000000D */
           npy_intp *core_dim_sizes;
-          npy_intp *core_dim_flags;
-
+          npy_uint32 *core_dim_flags;
+          PyObject *identity_value;
       } PyUFuncObject;
 
    .. c:macro: PyObject_HEAD
@@ -813,7 +840,9 @@ PyUFunc_Type and PyUFuncObject
    .. c:member:: int identity
 
        Either :c:data:`PyUFunc_One`, :c:data:`PyUFunc_Zero`,
-       :c:data:`PyUFunc_None` or :c:data:`PyUFunc_AllOnes` to indicate
+       :c:data:`PyUFunc_MinusOne`, :c:data:`PyUFunc_None`,
+       :c:data:`PyUFunc_ReorderableNone`, or
+       :c:data:`PyUFunc_IdentityValue` to indicate
        the identity for this operation. It is only used for a
        reduce-like call on an empty array.
 
@@ -953,7 +982,8 @@ PyUFunc_Type and PyUFuncObject
    .. c:member:: npy_intp *core_dim_sizes
 
        For each distinct core dimension, the possible
-       :ref:`frozen <frozen>` size if :c:data:`UFUNC_CORE_DIM_SIZE_INFERRED` is 0
+       :ref:`frozen <frozen>` size if
+       :c:data:`UFUNC_CORE_DIM_SIZE_INFERRED` is ``0``
 
    .. c:member:: npy_uint32 *core_dim_flags
 
@@ -968,10 +998,15 @@ PyUFunc_Type and PyUFuncObject
            if the dim size will be determined from the operands
            and not from a :ref:`frozen <frozen>` signature
 
+   .. c:member:: PyObject *identity_value
+
+       Identity for reduction, when :c:member:`PyUFuncObject.identity`
+       is equal to :c:data:`PyUFunc_IdentityValue`.
+
 PyArrayIter_Type and PyArrayIterObject
 --------------------------------------
 
-.. c:var:: PyArrayIter_Type
+.. c:var:: PyTypeObject PyArrayIter_Type
 
    This is an iterator object that makes it easy to loop over an
    N-dimensional array. It is the object returned from the flat
@@ -1075,13 +1110,13 @@ the internal structure of the iterator object, and merely interact
 with it through the use of the macros :c:func:`PyArray_ITER_NEXT` (it),
 :c:func:`PyArray_ITER_GOTO` (it, dest), or :c:func:`PyArray_ITER_GOTO1D`
 (it, index). All of these macros require the argument *it* to be a
-:c:type:`PyArrayIterObject *`.
+:c:expr:`PyArrayIterObject *`.
 
 
 PyArrayMultiIter_Type and PyArrayMultiIterObject
 ------------------------------------------------
 
-.. c:var:: PyArrayMultiIter_Type
+.. c:var:: PyTypeObject PyArrayMultiIter_Type
 
    This type provides an iterator that encapsulates the concept of
    broadcasting. It allows :math:`N` arrays to be broadcast together
@@ -1143,7 +1178,7 @@ PyArrayMultiIter_Type and PyArrayMultiIterObject
 PyArrayNeighborhoodIter_Type and PyArrayNeighborhoodIterObject
 --------------------------------------------------------------
 
-.. c:var:: PyArrayNeighborhoodIter_Type
+.. c:var:: PyTypeObject PyArrayNeighborhoodIter_Type
 
    This is an iterator object that makes it easy to loop over an
    N-dimensional neighborhood.
@@ -1182,7 +1217,7 @@ PyArrayNeighborhoodIter_Type and PyArrayNeighborhoodIterObject
 PyArrayFlags_Type and PyArrayFlagsObject
 ----------------------------------------
 
-.. c:var:: PyArrayFlags_Type
+.. c:var:: PyTypeObject PyArrayFlags_Type
 
    When the flags attribute is retrieved from Python, a special
    builtin object of this type is constructed. This special type makes
@@ -1216,8 +1251,8 @@ are ``Py{TYPE}ArrType_Type`` where ``{TYPE}`` can be
     **Object**.
 
 These type names are part of the C-API and can therefore be created in
-extension C-code. There is also a :c:data:`PyIntpArrType_Type` and a
-:c:data:`PyUIntpArrType_Type` that are simple substitutes for one of the
+extension C-code. There is also a ``PyIntpArrType_Type`` and a
+``PyUIntpArrType_Type`` that are simple substitutes for one of the
 integer types that can hold a pointer on the platform. The structure
 of these scalar objects is not exposed to C-code. The function
 :c:func:`PyArray_ScalarAsCtype` (..) can be used to extract the C-type
@@ -1320,13 +1355,13 @@ PyArrayInterface
 
    The :c:type:`PyArrayInterface` structure is defined so that NumPy and
    other extension modules can use the rapid array interface
-   protocol. The :obj:`__array_struct__` method of an object that
+   protocol. The :obj:`~object.__array_struct__` method of an object that
    supports the rapid array interface protocol should return a
-   :c:type:`PyCObject` that contains a pointer to a :c:type:`PyArrayInterface`
+   :c:type:`PyCapsule` that contains a pointer to a :c:type:`PyArrayInterface`
    structure with the relevant details of the array. After the new
    array is created, the attribute should be ``DECREF``'d which will
    free the :c:type:`PyArrayInterface` structure. Remember to ``INCREF`` the
-   object (whose :obj:`__array_struct__` attribute was retrieved) and
+   object (whose :obj:`~object.__array_struct__` attribute was retrieved) and
    point the base member of the new :c:type:`PyArrayObject` to this same
    object. In this way the memory for the array will be managed
    correctly.
@@ -1395,7 +1430,7 @@ PyArrayInterface
    .. c:member:: PyObject *descr
 
        A Python object describing the data-type in more detail (same
-       as the *descr* key in :obj:`__array_interface__`). This can be
+       as the *descr* key in :obj:`~object.__array_interface__`). This can be
        ``NULL`` if *typekind* and *itemsize* provide enough
        information. This field is also ignored unless
        :c:data:`NPY_ARR_HAS_DESCR` flag is on in *flags*.
@@ -1431,7 +1466,7 @@ for completeness and assistance in understanding the code.
    to define a 1-d loop for a ufunc for every defined signature of a
    user-defined data-type.
 
-.. c:var:: PyArrayMapIter_Type
+.. c:var:: PyTypeObject PyArrayMapIter_Type
 
    Advanced indexing is handled with this Python type. It is simply a
    loose wrapper around the C-structure containing the variables

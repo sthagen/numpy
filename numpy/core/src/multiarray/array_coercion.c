@@ -602,12 +602,13 @@ npy_free_coercion_cache(coercion_cache_obj *next) {
  *
  * @param out_descr The current descriptor.
  * @param descr The newly found descriptor to promote with
+ * @param fixed_DType The user provided (fixed) DType or NULL
  * @param flags dtype discover flags to signal failed promotion.
  * @return -1 on error, 0 on success.
  */
 static NPY_INLINE int
 handle_promotion(PyArray_Descr **out_descr, PyArray_Descr *descr,
-        enum _dtype_discovery_flags *flags)
+        PyArray_DTypeMeta *fixed_DType, enum _dtype_discovery_flags *flags)
 {
     assert(!(*flags & DESCRIPTOR_WAS_SET));
 
@@ -617,7 +618,11 @@ handle_promotion(PyArray_Descr **out_descr, PyArray_Descr *descr,
         return 0;
     }
     PyArray_Descr *new_descr = PyArray_PromoteTypes(descr, *out_descr);
-    if (new_descr == NULL) {
+    if (NPY_UNLIKELY(new_descr == NULL)) {
+        if (fixed_DType != NULL) {
+            /* If a DType is fixed, promotion must not fail. */
+            return -1;
+        }
         PyErr_Clear();
         *flags |= PROMOTION_FAILED;
         /* Continue with object, since we may need the dimensionality */
@@ -632,13 +637,15 @@ handle_promotion(PyArray_Descr **out_descr, PyArray_Descr *descr,
  * Handle a leave node (known scalar) during dtype and shape discovery.
  *
  * @param obj The python object or nested sequence to convert
- * @param max_dims The maximum number of dimensions.
  * @param curr_dims The current number of dimensions (depth in the recursion)
+ * @param max_dims The maximum number of dimensions.
  * @param out_shape The discovered output shape, will be filled
- * @param coercion_cache The coercion cache object to use.
- * @param DType the DType class that should be used, or NULL, if not provided.
+ * @param fixed_DType The user provided (fixed) DType or NULL
  * @param flags used signal that this is a ragged array, used internally and
  *        can be expanded if necessary.
+ * @param DType the DType class that should be used, or NULL, if not provided.
+ *
+ * @return 0 on success -1 on error
  */
 static NPY_INLINE int
 handle_scalar(
@@ -663,7 +670,7 @@ handle_scalar(
     if (descr == NULL) {
         return -1;
     }
-    if (handle_promotion(out_descr, descr, flags) < 0) {
+    if (handle_promotion(out_descr, descr, fixed_DType, flags) < 0) {
         Py_DECREF(descr);
         return -1;
     }
@@ -915,6 +922,53 @@ PyArray_DiscoverDTypeAndShape_Recursive(
             Py_DECREF(arr);
             arr = NULL;
         }
+        else if (curr_dims > 0 && curr_dims != max_dims) {
+            /*
+             * Deprecated 2020-12-09, NumPy 1.20
+             *
+             * See https://github.com/numpy/numpy/issues/17965
+             * Shapely had objects which are not sequences but did export
+             * the array-interface (and so are arguably array-like).
+             * Previously numpy would not use array-like information during
+             * shape discovery, so that it ended up acting as if this was
+             * an (unknown) scalar but with the specified dtype.
+             * Thus we ignore "scalars" here, as the value stored in the
+             * array should be acceptable.
+             */
+            if (PyArray_NDIM(arr) > 0 && NPY_UNLIKELY(!PySequence_Check(obj))) {
+                if (PyErr_WarnFormat(PyExc_FutureWarning, 1,
+                        "The input object of type '%s' is an array-like "
+                        "implementing one of the corresponding protocols "
+                        "(`__array__`, `__array_interface__` or "
+                        "`__array_struct__`); but not a sequence (or 0-D). "
+                        "In the future, this object will be coerced as if it "
+                        "was first converted using `np.array(obj)`. "
+                        "To retain the old behaviour, you have to either "
+                        "modify the type '%s', or assign to an empty array "
+                        "created with `np.empty(correct_shape, dtype=object)`.",
+                        Py_TYPE(obj)->tp_name, Py_TYPE(obj)->tp_name) < 0) {
+                    Py_DECREF(arr);
+                    return -1;
+                }
+                /*
+                 * Strangely enough, even though we threw away the result here,
+                 * we did use it during descriptor discovery, so promote it:
+                 */
+                if (update_shape(curr_dims, &max_dims, out_shape,
+                        0, NULL, NPY_FALSE, flags) < 0) {
+                    *flags |= FOUND_RAGGED_ARRAY;
+                    Py_DECREF(arr);
+                    return max_dims;
+                }
+                if (!(*flags & DESCRIPTOR_WAS_SET) && handle_promotion(
+                        out_descr, PyArray_DESCR(arr), fixed_DType, flags) < 0) {
+                    Py_DECREF(arr);
+                    return -1;
+                }
+                Py_DECREF(arr);
+                return max_dims;
+            }
+        }
     }
     if (arr != NULL) {
         /*
@@ -959,7 +1013,7 @@ PyArray_DiscoverDTypeAndShape_Recursive(
             /* object array with no elements, no need to promote/adjust. */
             return max_dims;
         }
-        if (handle_promotion(out_descr, cast_descr, flags) < 0) {
+        if (handle_promotion(out_descr, cast_descr, fixed_DType, flags) < 0) {
             Py_DECREF(cast_descr);
             return -1;
         }
@@ -972,14 +1026,28 @@ PyArray_DiscoverDTypeAndShape_Recursive(
      * and to handle it recursively. That is, unless we have hit the
      * dimension limit.
      */
-    npy_bool is_sequence = (PySequence_Check(obj) && PySequence_Size(obj) >= 0);
+    npy_bool is_sequence = PySequence_Check(obj);
+    if (is_sequence) {
+        is_sequence = PySequence_Size(obj) >= 0;
+        if (NPY_UNLIKELY(!is_sequence)) {
+            /* NOTE: This should likely just raise all errors */
+            if (PyErr_ExceptionMatches(PyExc_RecursionError) ||
+                    PyErr_ExceptionMatches(PyExc_MemoryError)) {
+                /*
+                 * Consider these unrecoverable errors, continuing execution
+                 * might crash the interpreter.
+                 */
+                return -1;
+            }
+            PyErr_Clear();
+        }
+    }
     if (NPY_UNLIKELY(*flags & DISCOVER_TUPLES_AS_ELEMENTS) &&
             PyTuple_Check(obj)) {
         is_sequence = NPY_FALSE;
     }
     if (curr_dims == max_dims || !is_sequence) {
         /* Clear any PySequence_Size error which would corrupts further calls */
-        PyErr_Clear();
         max_dims = handle_scalar(
                 obj, curr_dims, &max_dims, out_descr, out_shape, fixed_DType,
                 flags, NULL);

@@ -235,28 +235,39 @@ to define string equality, will be added to a ufunc.
     class StringEquality(BoundArrayMethod):
         nin = 1
         nout = 1
+        # DTypes are stored on the BoundArrayMethod and not on the internal
+        # ArrayMethod, to reference cyles.
         DTypes = (String, String, Bool)
 
-        def resolve_descriptors(context, given_descrs):
+        def resolve_descriptors(self: ArrayMethod, DTypes, given_descrs):
             """The strided loop supports all input string dtype instances
             and always returns a boolean. (String is always native byte order.)
 
             Defining this function is not necessary, since NumPy can provide
             it by default.
-            """
-            assert isinstance(given_descrs[0], context.DTypes[0])
-            assert isinstance(given_descrs[1], context.DTypes[1])
-            
-            # The operation is always "safe" casting (most ufuncs are)
-            return (given_descrs[0], given_descrs[1], context.DTypes[2]()), "safe"
 
-        def strided_loop(context, n, data, strides):
+            The `self` argument here refers to the unbound array method, so
+            that DTypes are passed in explicitly.
+            """
+            assert isinstance(given_descrs[0], DTypes[0])
+            assert isinstance(given_descrs[1], DTypes[1])
+            assert given_descrs[2] is None or isinstance(given_descrs[2], DTypes[2])
+            
+            out_descr = given_descrs[2]  # preserve input (e.g. metadata)
+            if given_descrs[2] is None:
+                out_descr = DTypes[2]()
+
+            # The operation is always "safe" casting (most ufuncs are)
+            return (given_descrs[0], given_descrs[1], out_descr), "safe"
+
+        def strided_loop(context, dimensions, data, strides, innerloop_data):
             """The 1-D strided loop, similar to those used in current ufuncs"""
-            # n: Number of elements in the one dimensional loop
+            # dimensions: Number of loop items and core dimensions
             # data: Pointers to the array data.
             # strides: strides to iterate all elements
+            n = dimensions[0]  # number of items to loop over
             num_chars1 = context.descriptors[0].itemsize
-            num_chars2 = context.descriptors[0].itemsize
+            num_chars2 = context.descriptors[1].itemsize
 
             # C code using the above information to compare the strings in
             # both arrays.  In particular, this loop requires the `num_chars1`
@@ -421,9 +432,8 @@ a new ``ArrayMethod`` object:
         # More general flags:
         flags: int
 
-        @staticmethod
-        def resolve_descriptors(
-                Context: context, Tuple[DType]: given_descrs)-> Casting, Tuple[DType]:
+        def resolve_descriptors(self,
+                Tuple[DTypeMeta], Tuple[DType|None]: given_descrs) -> Casting, Tuple[DType]:
             """Returns the safety of the operation (casting safety) and the
             """
             # A default implementation can be provided for non-parametric
@@ -446,7 +456,8 @@ a new ``ArrayMethod`` object:
             raise NotImplementedError
 
         @staticmethod
-        def strided_inner_loop(Context : context, data, strides,...):
+        def strided_inner_loop(
+                Context : context, data, dimensions, strides, innerloop_data):
             """The inner-loop (equivalent to the current ufunc loop)
             which is returned by the default `get_loop()` implementation."""
             raise NotImplementedError
@@ -466,8 +477,6 @@ With ``Context`` providing mostly static information about the function call:
         int : nin = 1
         # The number of output arguments:
         int : nout = 1
-        # The DTypes this Method operates on/is defined for:
-        Tuple[DTypeMeta] : dtypes
         # The actual dtypes instances the inner-loop operates on:
         Tuple[DType] : descriptors
 
@@ -572,6 +581,8 @@ fast C-functions and NumPy API creates the new ``ArrayMethod`` or
 ArrayMethod Specifications
 ==========================
 
+.. highlight:: c
+
 These specifications provide a minimal initial C-API, which shall be expanded
 in the future, for example to allow specialized inner-loops.
 
@@ -612,7 +623,8 @@ definitions (see also :ref:`NEP 42 <NEP42>` ``CastingImpl``):
 
       NPY_CASTING
       resolve_descriptors(
-              PyArrayMethod_Context *context,
+              PyArrayMethodObject *self,
+              PyArray_DTypeMeta *dtypes,
               PyArray_Descr *given_dtypes[nin+nout],
               PyArray_Descr *loop_dtypes[nin+nout]);
 
@@ -648,24 +660,24 @@ definitions (see also :ref:`NEP 42 <NEP42>` ``CastingImpl``):
 * The optional ``get_loop`` function will not be public initially, to avoid
   finalizing the API which requires design choices also with casting:
 
-  .. code-block::
+  .. code-block:: C
 
         innerloop *
         get_loop(
             PyArrayMethod_Context *context,
-            /* (move_references is currently used internally for casting) */
             int aligned, int move_references,
             npy_intp *strides,
             PyArray_StridedUnaryOp **out_loop,
-            NpyAuxData **userdata,
+            NpyAuxData **innerloop_data,
             NPY_ARRAYMETHOD_FLAGS *flags);
   
-  The ``NPY_ARRAYMETHOD_FLAGS`` can indicate whether the Python API is required
-  and floating point errors must be checked.
+  ``NPY_ARRAYMETHOD_FLAGS`` can indicate whether the Python API is required
+  and floating point errors must be checked. ``move_references`` is used
+  internally for NumPy casting at this time.
 
 * The inner-loop function::
 
-    int inner_loop(PyArrayMethod_Context *context, ..., void *userdata);
+    int inner_loop(PyArrayMethod_Context *context, ..., void *innerloop_data);
 
   Will have the identical signature to current inner-loops with the following
   changes:
@@ -675,12 +687,12 @@ definitions (see also :ref:`NEP 42 <NEP42>` ``CastingImpl``):
   * The new first argument ``PyArrayMethod_Context *`` is used to pass in
     potentially required information about the ufunc or descriptors in a
     convenient way.
-  * The ``void *userdata`` will be the ``NpyAuxData **userdata`` as set by
-    ``get_loop``.  If ``get_loop`` does not set ``userdata`` an ``npy_intp *``
+  * The ``void *innerloop_data`` will be the ``NpyAuxData **innerloop_data`` as set by
+    ``get_loop``.  If ``get_loop`` does not set ``innerloop_data`` an ``npy_intp *``
     is passed instead (see `Error Handling`_ below for the motivation).
 
   *Note:* Since ``get_loop`` is expected to be private, the exact implementation
-  of ``userdata`` can be modified until final exposure.
+  of ``innerloop_data`` can be modified until final exposure.
 
 Creation of a new ``BoundArrayMethod`` will use a ``PyArrayMethod_FromSpec()``
 function.  A shorthand will allow direct registration to a ufunc using
@@ -696,6 +708,7 @@ to contain the following (this may extend in the future)::
         PyType_Slot *slots;
     } PyArrayMethod_Spec;
 
+.. highlight:: python
 
 Discussion and alternatives
 ===========================
@@ -734,6 +747,13 @@ casting can be prepared.
 While the returned casting-safety (``NPY_CASTING``) will almost always be
 "safe" for universal functions, including it has two big advantages:
 
+* ``-1`` indicates that an error occurred. If a Python error is set, it will
+  be raised.  If no Python error is set this will be considered an "impossible"
+  cast and a custom error will be set. (This distinction is important for the
+  ``np.can_cast()`` function, which should raise the first one and return
+  ``False`` in the second case, it is not noteworthy for typical ufuncs).
+  *This point is under consideration, we may use ``-1`` to indicate
+  a general error, and use a different return value for an impossible cast.*
 * Returning the casting safety is central to NEP 42 for casting and
   allows the unmodified use of ``ArrayMethod`` there.
 * There may be a future desire to implement fast but unsafe implementations.
@@ -781,7 +801,7 @@ The ``Context`` can also hold potentially useful information such as the
 the original ``ufunc``, which can be helpful when reporting errors.
 
 In principle passing in Context is not necessary, as all information could be
-included in ``userdata`` and set up in the ``get_loop`` function.
+included in ``innerloop_data`` and set up in the ``get_loop`` function.
 In this NEP we propose passing the struct to simplify creation of loops for
 parametric DTypes.
 
@@ -795,10 +815,10 @@ provides a simple solution, which is already used in NumPy and public API.
 ``NpyAyxData *`` is a light weight, allocated structure and since it already
 exists in NumPy for this purpose, it seems a natural choice.
 To simplify some use-cases (see "Error Handling" below), we will pass a
-``npy_intp *userdata = 0`` instead when ``userdata`` is not provided.
+``npy_intp *innerloop_data = 0`` instead when ``innerloop_data`` is not provided.
 
 *Note: Since ``get_loop`` is expected to be private initially we can gain
-experience with ``userdata`` before exposing it as public API.*
+experience with ``innerloop_data`` before exposing it as public API.*
 
 **Return value:**
 
@@ -810,13 +830,15 @@ Both are discussed in the next section.
 Error Handling
 """"""""""""""
 
+.. highlight:: c
+
 We expect that future inner-loops will generally set Python errors as soon
 as an error is found. This is complicated when the inner-loop is run without
 locking the GIL.  In this case the function will have to lock the GIL,
-set the Python error and return ``-1`` to indicate an error occurred::
+set the Python error and return ``-1`` to indicate an error occurred:::
 
     int
-    inner_loop(PyArrayMethod_Context *context, ..., void *userdata)
+    inner_loop(PyArrayMethod_Context *context, ..., void *innerloop_data)
     {
         NPY_ALLOW_C_API_DEF
 
@@ -859,13 +881,13 @@ solution and more complex solution may be possible future extensions.
 Handling *warnings* is slightly more complex: A warning should be
 given exactly once for each function call (i.e. for the whole array) even
 if naively it would be given many times.
-To simplify such a use case, we will pass in ``npy_intp *userdata = 0``
+To simplify such a use case, we will pass in ``npy_intp *innerloop_data = 0``
 by default which can be used to store flags (or other simple persistent data).
 For instance, we could imagine an integer multiplication loop which warns
 when an overflow occurred::
 
     int
-    integer_multiply(PyArrayMethod_Context *context, ..., npy_intp *userdata)
+    integer_multiply(PyArrayMethod_Context *context, ..., npy_intp *innerloop_data)
     {
         int overflow;
         NPY_ALLOW_C_API_DEF
@@ -873,24 +895,25 @@ when an overflow occurred::
         for (npy_intp i = 0; i < N; i++) {
             *out = multiply_integers(*in1, *in2, &overflow);
 
-            if (overflow && !*userdata) {
+            if (overflow && !*innerloop_data) {
                 NPY_ALLOW_C_API;
                 if (PyErr_Warn(PyExc_UserWarning,
                         "Integer overflow detected.") < 0) {
                     NPY_DISABLE_C_API
                     return -1;
                 }
-                *userdata = 1;
+                *innerloop_data = 1;
                 NPY_DISABLE_C_API
         }
         return 0;
     }
 
-*TODO:* The idea of passing an ``npy_intp`` scratch space when ``userdata``
+*TODO:* The idea of passing an ``npy_intp`` scratch space when ``innerloop_data``
 is not set seems convenient, but I am uncertain about it, since I am not
 aware of any similar prior art.  This "scratch space" could also be part of
 the ``context`` in principle.
 
+.. highlight:: python
 
 Reusing existing Loops/Implementations
 ======================================
