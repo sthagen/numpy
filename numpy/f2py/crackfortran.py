@@ -294,10 +294,10 @@ def getextension(name):
         return ''
     return name[i + 1:]
 
-is_f_file = re.compile(r'.*[.](for|ftn|f77|f)\Z', re.I).match
-_has_f_header = re.compile(r'-[*]-\s*fortran\s*-[*]-', re.I).search
-_has_f90_header = re.compile(r'-[*]-\s*f90\s*-[*]-', re.I).search
-_has_fix_header = re.compile(r'-[*]-\s*fix\s*-[*]-', re.I).search
+is_f_file = re.compile(r'.*\.(for|ftn|f77|f)\Z', re.I).match
+_has_f_header = re.compile(r'-\*-\s*fortran\s*-\*-', re.I).search
+_has_f90_header = re.compile(r'-\*-\s*f90\s*-\*-', re.I).search
+_has_fix_header = re.compile(r'-\*-\s*fix\s*-\*-', re.I).search
 _free_f90_start = re.compile(r'[^c*]\s*[^\s\d\t]', re.I).match
 
 
@@ -636,7 +636,7 @@ def _simplifyargs(argsline):
         a.append(n)
     return ','.join(a)
 
-crackline_re_1 = re.compile(r'\s*(?P<result>\b[a-z]+[\w]*\b)\s*[=].*', re.I)
+crackline_re_1 = re.compile(r'\s*(?P<result>\b[a-z]+\w*\b)\s*=.*', re.I)
 
 
 def crackline(line, reset=0):
@@ -1482,7 +1482,7 @@ def cracktypespec0(typespec, ll):
         ll = ll[i + 2:]
     return typespec, selector, attr, ll
 #####
-namepattern = re.compile(r'\s*(?P<name>\b[\w]+\b)\s*(?P<after>.*)\s*\Z', re.I)
+namepattern = re.compile(r'\s*(?P<name>\b\w+\b)\s*(?P<after>.*)\s*\Z', re.I)
 kindselector = re.compile(
     r'\s*(\(\s*(kind\s*=)?\s*(?P<kind>.*)\s*\)|[*]\s*(?P<kind2>.*?))\s*\Z', re.I)
 charselector = re.compile(
@@ -2605,7 +2605,7 @@ def analyzevars(block):
     params = get_parameters(vars, get_useparameters(block))
 
     dep_matches = {}
-    name_match = re.compile(r'\w[\w\d_$]*').match
+    name_match = re.compile(r'[A-Za-z][\w$]*').match
     for v in list(vars.keys()):
         m = name_match(v)
         if m:
@@ -2988,10 +2988,10 @@ def analyzeargs(block):
         block['vars'][block['result']] = {}
     return block
 
-determineexprtype_re_1 = re.compile(r'\A\(.+?[,].+?\)\Z', re.I)
-determineexprtype_re_2 = re.compile(r'\A[+-]?\d+(_(?P<name>[\w]+)|)\Z', re.I)
+determineexprtype_re_1 = re.compile(r'\A\(.+?,.+?\)\Z', re.I)
+determineexprtype_re_2 = re.compile(r'\A[+-]?\d+(_(?P<name>\w+)|)\Z', re.I)
 determineexprtype_re_3 = re.compile(
-    r'\A[+-]?[\d.]+[\d+\-de.]*(_(?P<name>[\w]+)|)\Z', re.I)
+    r'\A[+-]?[\d.]+[-\d+de.]*(_(?P<name>\w+)|)\Z', re.I)
 determineexprtype_re_4 = re.compile(r'\A\(.*\)\Z', re.I)
 determineexprtype_re_5 = re.compile(r'\A(?P<name>\w+)\s*\(.*?\)\s*\Z', re.I)
 
