@@ -51,7 +51,6 @@ cdef extern from "numpy/random/distributions.h":
     void random_standard_uniform_fill(bitgen_t* bitgen_state, np.npy_intp cnt, double *out) nogil
     int64_t random_positive_int(bitgen_t *bitgen_state) nogil
     double random_uniform(bitgen_t *bitgen_state, double lower, double range) nogil
-    double random_vonmises(bitgen_t *bitgen_state, double mu, double kappa) nogil
     double random_laplace(bitgen_t *bitgen_state, double loc, double scale) nogil
     double random_gumbel(bitgen_t *bitgen_state, double loc, double scale) nogil
     double random_logistic(bitgen_t *bitgen_state, double loc, double scale) nogil
@@ -100,6 +99,7 @@ cdef extern from "include/legacy-distributions.h":
     double legacy_f(aug_bitgen_t *aug_state, double dfnum, double dfden) nogil
     double legacy_exponential(aug_bitgen_t *aug_state, double scale) nogil
     double legacy_power(aug_bitgen_t *state, double a) nogil
+    double legacy_vonmises(bitgen_t *bitgen_state, double mu, double kappa) nogil
 
 np.import_array()
 
@@ -2281,7 +2281,7 @@ cdef class RandomState:
         >>> plt.show()
 
         """
-        return cont(&random_vonmises, &self._bitgen, size, self.lock, 2,
+        return cont(&legacy_vonmises, &self._bitgen, size, self.lock, 2,
                     mu, 'mu', CONS_NONE,
                     kappa, 'kappa', CONS_NON_NEGATIVE,
                     0.0, '', CONS_NONE, None)
@@ -4232,7 +4232,20 @@ cdef class RandomState:
         pix = <double*>np.PyArray_DATA(parr)
         check_array_constraint(parr, 'pvals', CONS_BOUNDED_0_1)
         if kahan_sum(pix, d-1) > (1.0 + 1e-12):
-            raise ValueError("sum(pvals[:-1]) > 1.0")
+            # When floating, but not float dtype, and close, improve the error
+            # 1.0001 works for float16 and float32
+            if (isinstance(pvals, np.ndarray)
+                    and np.issubdtype(pvals.dtype, np.floating)
+                    and pvals.dtype != float
+                    and pvals.sum() < 1.0001):
+                msg = ("sum(pvals[:-1].astype(np.float64)) > 1.0. The pvals "
+                       "array is cast to 64-bit floating point prior to "
+                       "checking the sum. Precision changes when casting may "
+                       "cause problems even if the sum of the original pvals "
+                       "is valid.")
+            else:
+                msg = "sum(pvals[:-1]) > 1.0"
+            raise ValueError(msg)
 
         if size is None:
             shape = (d,)
