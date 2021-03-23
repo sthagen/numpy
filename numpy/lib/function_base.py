@@ -593,7 +593,7 @@ def piecewise(x, condlist, funclist, *args, **kw):
             not isinstance(condlist[0], (list, ndarray)) and x.ndim != 0):
         condlist = [condlist]
 
-    condlist = array(condlist, dtype=bool)
+    condlist = asarray(condlist, dtype=bool)
     n = len(condlist)
 
     if n == n2 - 1:  # compute the "otherwise" condition.
@@ -2191,15 +2191,14 @@ class vectorize:
             ufunc, otypes = self._get_ufunc_and_otypes(func=func, args=args)
 
             # Convert args to object arrays first
-            inputs = [array(a, copy=False, subok=True, dtype=object)
-                      for a in args]
+            inputs = [asanyarray(a, dtype=object) for a in args]
 
             outputs = ufunc(*inputs)
 
             if ufunc.nout == 1:
-                res = array(outputs, copy=False, subok=True, dtype=otypes[0])
+                res = asanyarray(outputs, dtype=otypes[0])
             else:
-                res = tuple([array(x, copy=False, subok=True, dtype=t)
+                res = tuple([asanyarray(x, dtype=t)
                              for x, t in zip(outputs, otypes)])
         return res
 
@@ -4277,7 +4276,8 @@ def meshgrid(*xi, copy=True, sparse=False, indexing='xy'):
     >>> y = np.arange(-5, 5, 0.1)
     >>> xx, yy = np.meshgrid(x, y, sparse=True)
     >>> z = np.sin(xx**2 + yy**2) / (xx**2 + yy**2)
-    >>> h = plt.contourf(x,y,z)
+    >>> h = plt.contourf(x, y, z)
+    >>> plt.axis('scaled')
     >>> plt.show()
 
     """
