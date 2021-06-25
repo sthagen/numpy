@@ -5364,6 +5364,17 @@ class TestFlat:
             assert_(abs(sys.getrefcount(ind) - rc_ind) < 50)
             assert_(abs(sys.getrefcount(indtype) - rc_indtype) < 50)
 
+    def test_index_getset(self):
+        it = np.arange(10).reshape(2, 1, 5).flat
+        with pytest.raises(AttributeError):
+            it.index = 10
+
+        for _ in it:
+            pass
+        # Check the value of `.index` is updated correctly (see also gh-19153)
+        # If the type was incorrect, this would show up on big-endian machines
+        assert it.index == it.base.size
+
 
 class TestResize:
 
@@ -6723,7 +6734,7 @@ class TestMatmulOperator(MatmulCommon):
     def test_matmul_raises(self):
         assert_raises(TypeError, self.matmul, np.int8(5), np.int8(5))
         assert_raises(TypeError, self.matmul, np.void(b'abc'), np.void(b'abc'))
-        assert_raises(ValueError, self.matmul, np.arange(10), np.void(b'abc'))
+        assert_raises(TypeError, self.matmul, np.arange(10), np.void(b'abc'))
 
 def test_matmul_inplace():
     # It would be nice to support in-place matmul eventually, but for now

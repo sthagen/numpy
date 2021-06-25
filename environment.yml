@@ -21,13 +21,13 @@ dependencies:
   - mypy=0.812
   - typing_extensions
   # For building docs
-  - sphinx=3.5.4
+  - sphinx=4.0.1
   - numpydoc=1.1.0
   - ipython
   - scipy
   - pandas
   - matplotlib
-  - pydata-sphinx-theme=0.5.2
+  - pydata-sphinx-theme
   # For linting
   - pycodestyle=2.7.0
   - gitpython
