@@ -49,6 +49,7 @@
 #include "common.h"
 #include "dtypemeta.h"
 #include "numpyos.h"
+#include "convert_datatype.h"
 
 /********** PRINTF DEBUG TRACING **************/
 #define NPY_UF_DBG_TRACING 0
@@ -991,33 +992,44 @@ fail:
  */
 static int
 check_for_trivial_loop(PyUFuncObject *ufunc,
-                        PyArrayObject **op,
-                        PyArray_Descr **dtype,
-                        npy_intp buffersize)
+        PyArrayObject **op, PyArray_Descr **dtypes,
+        npy_intp buffersize)
 {
-    npy_intp i, nin = ufunc->nin, nop = nin + ufunc->nout;
+    int i, nin = ufunc->nin, nop = nin + ufunc->nout;
 
     for (i = 0; i < nop; ++i) {
         /*
          * If the dtype doesn't match, or the array isn't aligned,
          * indicate that the trivial loop can't be done.
          */
-        if (op[i] != NULL &&
-                (!PyArray_ISALIGNED(op[i]) ||
-                !PyArray_EquivTypes(dtype[i], PyArray_DESCR(op[i]))
-                                        )) {
+        if (op[i] == NULL) {
+            continue;
+        }
+        int must_copy = !PyArray_ISALIGNED(op[i]);
+
+        if (dtypes[i] != PyArray_DESCR(op[i])) {
+            NPY_CASTING safety = PyArray_GetCastSafety(
+                    PyArray_DESCR(op[i]), dtypes[i], NULL);
+            if (safety < 0) {
+                /* A proper error during a cast check should be rare */
+                return -1;
+            }
+            if (!(safety & _NPY_CAST_IS_VIEW)) {
+                must_copy = 1;
+            }
+        }
+        if (must_copy) {
             /*
              * If op[j] is a scalar or small one dimensional
              * array input, make a copy to keep the opportunity
-             * for a trivial loop.
+             * for a trivial loop.  Outputs are not copied here.
              */
-            if (i < nin && (PyArray_NDIM(op[i]) == 0 ||
-                    (PyArray_NDIM(op[i]) == 1 &&
-                     PyArray_DIM(op[i],0) <= buffersize))) {
+            if (i < nin && (PyArray_NDIM(op[i]) == 0
+                            || (PyArray_NDIM(op[i]) == 1
+                                && PyArray_DIM(op[i], 0) <= buffersize))) {
                 PyArrayObject *tmp;
-                Py_INCREF(dtype[i]);
-                tmp = (PyArrayObject *)
-                            PyArray_CastToType(op[i], dtype[i], 0);
+                Py_INCREF(dtypes[i]);
+                tmp = (PyArrayObject *)PyArray_CastToType(op[i], dtypes[i], 0);
                 if (tmp == NULL) {
                     return -1;
                 }
@@ -2476,8 +2488,6 @@ PyUFunc_GenericFunctionInternal(PyUFuncObject *ufunc,
     /* These parameters come from extobj= or from a TLS global */
     int buffersize = 0, errormask = 0;
 
-    int trivial_loop_ok = 0;
-
     NPY_UF_DBG_PRINT1("\nEvaluating ufunc %s\n", ufunc_name);
 
     /* Get the buffersize and errormask */
@@ -2532,16 +2542,16 @@ PyUFunc_GenericFunctionInternal(PyUFuncObject *ufunc,
          * Since it requires dtypes, it can only be called after
          * ufunc->type_resolver
          */
-        trivial_loop_ok = check_for_trivial_loop(ufunc,
+        int trivial_ok = check_for_trivial_loop(ufunc,
                 op, operation_descrs, buffersize);
-        if (trivial_loop_ok < 0) {
+        if (trivial_ok < 0) {
             return -1;
         }
 
         /* check_for_trivial_loop on half-floats can overflow */
         npy_clear_floatstatus_barrier((char*)&ufunc);
 
-        retval = execute_legacy_ufunc_loop(ufunc, trivial_loop_ok,
+        retval = execute_legacy_ufunc_loop(ufunc, trivial_ok,
                             op, operation_descrs, order,
                             buffersize, output_array_prepare,
                             full_args, op_flags);
@@ -5218,6 +5228,7 @@ PyUFunc_RegisterLoopForDescr(PyUFuncObject *ufunc,
 
     arg_typenums = PyArray_malloc(ufunc->nargs * sizeof(int));
     if (arg_typenums == NULL) {
+        Py_DECREF(key);
         PyErr_NoMemory();
         return -1;
     }
@@ -5355,6 +5366,7 @@ PyUFunc_RegisterLoopForType(PyUFuncObject *ufunc,
     /* Get entry for this user-defined type*/
     cobj = PyDict_GetItemWithError(ufunc->userloops, key);
     if (cobj == NULL && PyErr_Occurred()) {
+        Py_DECREF(key);
         return 0;
     }
     /* If it's not there, then make one and return. */
@@ -5998,7 +6010,7 @@ _typecharfromnum(int num) {
 
 
 static PyObject *
-ufunc_get_doc(PyUFuncObject *ufunc)
+ufunc_get_doc(PyUFuncObject *ufunc, void *NPY_UNUSED(ignored))
 {
     static PyObject *_sig_formatter;
     PyObject *doc;
@@ -6030,31 +6042,31 @@ ufunc_get_doc(PyUFuncObject *ufunc)
 
 
 static PyObject *
-ufunc_get_nin(PyUFuncObject *ufunc)
+ufunc_get_nin(PyUFuncObject *ufunc, void *NPY_UNUSED(ignored))
 {
     return PyLong_FromLong(ufunc->nin);
 }
 
 static PyObject *
-ufunc_get_nout(PyUFuncObject *ufunc)
+ufunc_get_nout(PyUFuncObject *ufunc, void *NPY_UNUSED(ignored))
 {
     return PyLong_FromLong(ufunc->nout);
 }
 
 static PyObject *
-ufunc_get_nargs(PyUFuncObject *ufunc)
+ufunc_get_nargs(PyUFuncObject *ufunc, void *NPY_UNUSED(ignored))
 {
     return PyLong_FromLong(ufunc->nargs);
 }
 
 static PyObject *
-ufunc_get_ntypes(PyUFuncObject *ufunc)
+ufunc_get_ntypes(PyUFuncObject *ufunc, void *NPY_UNUSED(ignored))
 {
     return PyLong_FromLong(ufunc->ntypes);
 }
 
 static PyObject *
-ufunc_get_types(PyUFuncObject *ufunc)
+ufunc_get_types(PyUFuncObject *ufunc, void *NPY_UNUSED(ignored))
 {
     /* return a list with types grouped input->output */
     PyObject *list;
@@ -6088,20 +6100,20 @@ ufunc_get_types(PyUFuncObject *ufunc)
 }
 
 static PyObject *
-ufunc_get_name(PyUFuncObject *ufunc)
+ufunc_get_name(PyUFuncObject *ufunc, void *NPY_UNUSED(ignored))
 {
     return PyUnicode_FromString(ufunc->name);
 }
 
 static PyObject *
-ufunc_get_identity(PyUFuncObject *ufunc)
+ufunc_get_identity(PyUFuncObject *ufunc, void *NPY_UNUSED(ignored))
 {
     npy_bool reorderable;
     return _get_identity(ufunc, &reorderable);
 }
 
 static PyObject *
-ufunc_get_signature(PyUFuncObject *ufunc)
+ufunc_get_signature(PyUFuncObject *ufunc, void *NPY_UNUSED(ignored))
 {
     if (!ufunc->core_enabled) {
         Py_RETURN_NONE;
