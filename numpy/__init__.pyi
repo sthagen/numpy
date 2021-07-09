@@ -8,6 +8,7 @@ from abc import abstractmethod
 from types import TracebackType, MappingProxyType
 from contextlib import ContextDecorator
 
+from numpy.core.multiarray import flagsobj
 from numpy.core._internal import _ctypes
 from numpy.typing import (
     # Arrays
@@ -1121,36 +1122,6 @@ class dtype(Generic[_DTypeScalar_co]):
     @property
     def type(self) -> Type[_DTypeScalar_co]: ...
 
-class _flagsobj:
-    aligned: bool
-    updateifcopy: bool
-    writeable: bool
-    writebackifcopy: bool
-    @property
-    def behaved(self) -> bool: ...
-    @property
-    def c_contiguous(self) -> bool: ...
-    @property
-    def carray(self) -> bool: ...
-    @property
-    def contiguous(self) -> bool: ...
-    @property
-    def f_contiguous(self) -> bool: ...
-    @property
-    def farray(self) -> bool: ...
-    @property
-    def fnc(self) -> bool: ...
-    @property
-    def forc(self) -> bool: ...
-    @property
-    def fortran(self) -> bool: ...
-    @property
-    def num(self) -> int: ...
-    @property
-    def owndata(self) -> bool: ...
-    def __getitem__(self, key: str) -> bool: ...
-    def __setitem__(self, key: str, value: bool) -> None: ...
-
 _ArrayLikeInt = Union[
     int,
     integer,
@@ -1203,7 +1174,7 @@ class _ArrayOrScalarCommon:
     @property
     def data(self) -> memoryview: ...
     @property
-    def flags(self) -> _flagsobj: ...
+    def flags(self) -> flagsobj: ...
     @property
     def itemsize(self) -> int: ...
     @property
@@ -1289,18 +1260,24 @@ class _ArrayOrScalarCommon:
         self,
         axis: None = ...,
         out: None = ...,
+        *,
+        keepdims: L[False] = ...,
     ) -> intp: ...
     @overload
     def argmax(
         self,
         axis: _ShapeLike = ...,
         out: None = ...,
+        *,
+        keepdims: bool = ...,
     ) -> Any: ...
     @overload
     def argmax(
         self,
         axis: Optional[_ShapeLike] = ...,
         out: _NdArraySubClass = ...,
+        *,
+        keepdims: bool = ...,
     ) -> _NdArraySubClass: ...
 
     @overload
@@ -1308,18 +1285,24 @@ class _ArrayOrScalarCommon:
         self,
         axis: None = ...,
         out: None = ...,
+        *,
+        keepdims: L[False] = ...,
     ) -> intp: ...
     @overload
     def argmin(
         self,
         axis: _ShapeLike = ...,
-         out: None = ...,
+        out: None = ...,
+        *,
+        keepdims: bool = ...,
     ) -> Any: ...
     @overload
     def argmin(
         self,
         axis: Optional[_ShapeLike] = ...,
         out: _NdArraySubClass = ...,
+        *,
+        keepdims: bool = ...,
     ) -> _NdArraySubClass: ...
 
     def argsort(

@@ -25,8 +25,8 @@ from numpy.core._rational_tests import rational
 from numpy.testing import (
     assert_, assert_raises, assert_warns, assert_equal, assert_almost_equal,
     assert_array_equal, assert_raises_regex, assert_array_almost_equal,
-    assert_allclose, IS_PYPY, HAS_REFCOUNT, assert_array_less, runstring,
-    temppath, suppress_warnings, break_cycles,
+    assert_allclose, IS_PYPY, IS_PYSTON, HAS_REFCOUNT, assert_array_less,
+    runstring, temppath, suppress_warnings, break_cycles,
     )
 from numpy.testing._private.utils import _no_tracing
 from numpy.core.tests._locales import CommaDecimalPointLocale
@@ -4192,6 +4192,88 @@ class TestStringCompare:
         assert_array_equal(g1 < g2,  [g1[i] < g2[i] for i in [0, 1, 2]])
         assert_array_equal(g1 > g2,  [g1[i] > g2[i] for i in [0, 1, 2]])
 
+class TestArgmaxArgminCommon:
+
+    sizes = [(), (3,), (3, 2), (2, 3),
+             (3, 3), (2, 3, 4), (4, 3, 2),
+             (1, 2, 3, 4), (2, 3, 4, 1),
+             (3, 4, 1, 2), (4, 1, 2, 3)]
+
+    @pytest.mark.parametrize("size, axis", itertools.chain(*[[(size, axis)
+        for axis in list(range(-len(size), len(size))) + [None]] 
+        for size in sizes]))
+    @pytest.mark.parametrize('method', [np.argmax, np.argmin])
+    def test_np_argmin_argmax_keepdims(self, size, axis, method):
+
+        arr = np.random.normal(size=size)
+
+        # contiguous arrays
+        if axis is None:
+            new_shape = [1 for _ in range(len(size))]
+        else:
+            new_shape = list(size)
+            new_shape[axis] = 1
+        new_shape = tuple(new_shape)
+
+        _res_orig = method(arr, axis=axis)
+        res_orig = _res_orig.reshape(new_shape)
+        res = method(arr, axis=axis, keepdims=True)
+        assert_equal(res, res_orig)
+        assert_(res.shape == new_shape)
+        outarray = np.empty(res.shape, dtype=res.dtype)
+        res1 = method(arr, axis=axis, out=outarray, 
+                            keepdims=True)
+        assert_(res1 is outarray)
+        assert_equal(res, outarray)
+
+        if len(size) > 0:
+            wrong_shape = list(new_shape)
+            if axis is not None:
+                wrong_shape[axis] = 2
+            else:
+                wrong_shape[0] = 2
+            wrong_outarray = np.empty(wrong_shape, dtype=res.dtype)
+            with pytest.raises(ValueError):
+                method(arr.T, axis=axis, 
+                        out=wrong_outarray, keepdims=True)
+
+        # non-contiguous arrays
+        if axis is None:
+            new_shape = [1 for _ in range(len(size))]
+        else:
+            new_shape = list(size)[::-1]
+            new_shape[axis] = 1
+        new_shape = tuple(new_shape)
+
+        _res_orig = method(arr.T, axis=axis)
+        res_orig = _res_orig.reshape(new_shape)
+        res = method(arr.T, axis=axis, keepdims=True)
+        assert_equal(res, res_orig)
+        assert_(res.shape == new_shape)
+        outarray = np.empty(new_shape[::-1], dtype=res.dtype)
+        outarray = outarray.T
+        res1 = method(arr.T, axis=axis, out=outarray, 
+                            keepdims=True)
+        assert_(res1 is outarray)
+        assert_equal(res, outarray)
+
+        if len(size) > 0:
+            # one dimension lesser for non-zero sized 
+            # array should raise an error
+            with pytest.raises(ValueError):
+                method(arr[0], axis=axis, 
+                        out=outarray, keepdims=True)
+        
+        if len(size) > 0:
+            wrong_shape = list(new_shape)
+            if axis is not None:
+                wrong_shape[axis] = 2
+            else:
+                wrong_shape[0] = 2
+            wrong_outarray = np.empty(wrong_shape, dtype=res.dtype)
+            with pytest.raises(ValueError):
+                method(arr.T, axis=axis, 
+                        out=wrong_outarray, keepdims=True)
 
 class TestArgmax:
 
@@ -8031,6 +8113,8 @@ class TestConversion:
 
         assert_raises(NotImplementedError, bool, np.array(NotConvertible()))
         assert_raises(NotImplementedError, bool, np.array([NotConvertible()]))
+        if IS_PYSTON:
+            pytest.skip("Pyston disables recursion checking")
 
         self_containing = np.array([None])
         self_containing[0] = self_containing
